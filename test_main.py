@@ -1,18 +1,27 @@
 from main import handle_request
 
 
-assert handle_request('{"name": "read_file"}') == {
-    "error": "缺少arguments"
-}
+def test_missing_arguments():
+    result = handle_request('{"name": "read_file"}')
 
-assert handle_request(
-    '{"name": "read_file", "arguments": []}'
-) == {
-    "error": "arguments必须是JSON对象"
-}
+    assert result == {
+        "error": "缺少arguments"
+    }
 
-assert handle_request("[]") == {
-    "error": "请求必须是JSON对象"
-}
 
-print("全部测试通过")
+def test_arguments_must_be_object():
+    result = handle_request(
+        '{"name": "read_file", "arguments": []}'
+    )
+
+    assert result == {
+        "error": "arguments必须是JSON对象"
+    }
+
+
+def test_request_must_be_object():
+    result = handle_request("[]")
+
+    assert result == {
+        "error": "请求必须是JSON对象"
+    }
