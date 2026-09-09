@@ -80,10 +80,3 @@ def handle_request(raw):
     if "error" in result:
         return result
     return dispatch(result["name"],result["path"])
-
-
-
-
-print(handle_request('{"name": "read_file"}'))
-print(handle_request('{"name": "read_file", "arguments": []}'))
-print(handle_request('{"name": "read_file", "arguments": "hello"}'))
