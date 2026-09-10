@@ -112,3 +112,18 @@ def test_unknown_tool():
     assert result == {
         "error": "未知工具"
     }
+
+def test_name_must_be_string():
+    result=handle_request(
+        '{"name": 123, "arguments": {"path": "demo.txt"}}'
+    )
+    assert result=={
+        "error":"name必须是字符串"
+    }
+def test_path_must_be_string():
+    result=handle_request(
+        '{"name": "read_file" , "arguments": {"path": 123}}'
+    )
+    assert result=={
+        "error":"path必须是字符串"
+    }

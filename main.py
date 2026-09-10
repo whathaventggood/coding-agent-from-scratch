@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 #读工具
-def read_file(path):
+def read_file(path:str)->dict[str,str]:
     if not path:
         return {"error":"路径不能为空"}
     file_path=Path(path)
@@ -17,7 +17,7 @@ def read_file(path):
 
 
 #列出目录下文件名
-def list_files(path):
+def list_files(path:str)->dict[str,list[str]|str]:
     if not path:
         return {"error":"路径不能为空"}
     folders = Path(path)
@@ -44,7 +44,7 @@ def dispatch(tool_name,path):
 
 
 #解析json内容
-def parse_request(raw):
+def parse_request(raw:str)->dict[str,str]:
     try:
         request=json.loads(raw)
     except json.JSONDecodeError:
@@ -54,8 +54,12 @@ def parse_request(raw):
         return {"error":"请求必须是JSON对象"}
 
     name=request.get("name")
+
     if name is None:
         return {"error":"缺少name"}
+
+    if not isinstance(name,str):
+        return {"error":"name必须是字符串"}
 
     arguments = request.get("arguments")
 
@@ -69,6 +73,9 @@ def parse_request(raw):
     path=arguments.get("path")
     if path is None:
         return {"error":"缺少path"}
+
+    if not isinstance(path,str):
+        return {"error":"path必须是字符串"}
 
     return {"name":name,"path":path}
 
