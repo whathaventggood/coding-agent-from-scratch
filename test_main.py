@@ -4,9 +4,10 @@ from main import handle_request,read_file,list_files,ToolResult,ToolRequest,pars
 def test_missing_arguments():
     result = handle_request('{"name": "read_file"}')
 
-    assert result == {
-        "error": "缺少arguments"
-    }
+    assert result == ToolResult(
+        content="缺少arguments",
+        is_error=True,
+    )
 
 
 def test_arguments_must_be_object():
@@ -14,17 +15,19 @@ def test_arguments_must_be_object():
         '{"name": "read_file", "arguments": []}'
     )
 
-    assert result == {
-        "error": "arguments必须是JSON对象"
-    }
+    assert result == ToolResult(
+        content="arguments必须是JSON对象",
+        is_error=True,
+    )
 
 
 def test_request_must_be_object():
     result = handle_request("[]")
 
-    assert result == {
-        "error": "请求必须是JSON对象"
-    }
+    assert result == ToolResult(
+        content="请求必须是JSON对象",
+        is_error=True,
+    )
 
 
 def test_read_file_success(tmp_path):
@@ -97,9 +100,10 @@ def test_missing_path():
         '{"name": "read_file", "arguments": {}}'
     )
 
-    assert result == {
-        "error":"缺少path"
-    }
+    assert result == ToolResult(
+        content="缺少path",
+        is_error=True,
+    )
 
 
 def test_invalid_json():
@@ -107,9 +111,10 @@ def test_invalid_json():
         '{"name": "read_file"'
     )
 
-    assert result == {
-        "error": "json格式错误"
-    }
+    assert result == ToolResult(
+        content="json格式错误",
+        is_error=True,
+    )
 
 
 def test_unknown_tool():
@@ -126,16 +131,19 @@ def test_name_must_be_string():
     result=handle_request(
         '{"name": 123, "arguments": {"path": "demo.txt"}}'
     )
-    assert result=={
-        "error":"name必须是字符串"
-    }
+    assert result==ToolResult(
+        content="name必须是字符串",
+        is_error=True,
+    )
+
 def test_path_must_be_string():
     result=handle_request(
         '{"name": "read_file" , "arguments": {"path": 123}}'
     )
-    assert result=={
-        "error":"path必须是字符串"
-    }
+    assert result==ToolResult(
+        content="path必须是字符串",
+        is_error=True,
+    )
 
 def test_tool_request_fielsd():
     request=ToolRequest(

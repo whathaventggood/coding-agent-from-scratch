@@ -122,10 +122,13 @@ def parse_request(raw:str)->dict[str,str]|ToolRequest:
 
 
 #处理请求
-def handle_request(raw: str) -> dict[str,str] | ToolResult:
+def handle_request(raw: str) ->  ToolResult:
     result=parse_request(raw)
     if isinstance(result,dict):
-        return result
+        return ToolResult(
+            content=result["error"],
+            is_error=True,
+        )
     return dispatch(
         result.name,
         result.path,
