@@ -1,34 +1,63 @@
 import json
 from pathlib import Path
+from dataclasses import dataclass
+
+@dataclass
+class ToolResult:
+    content: str
+    is_error: bool=False
 
 
 #读工具
-def read_file(path:str)->dict[str,str]:
+def read_file(path:str)->ToolResult:
     if not path:
-        return {"error":"路径不能为空"}
+        return ToolResult(
+            content="路径不能为空",
+            is_error=True,
+        )
     file_path=Path(path)
     if file_path.is_dir():
-        return {"error":"路径是目录"}
+        return ToolResult(
+            content="路径是目录",
+            is_error=True,
+        )
     try:
         content=file_path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return {"error":"文件不存在"}
-    return {"content":content}
+        return ToolResult(
+            content="文件不存在",
+            is_error=True,
+        )
+    return ToolResult(
+        content=content,
+    )
 
 
 #列出目录下文件名
-def list_files(path:str)->dict[str,list[str]|str]:
+def list_files(path:str)->ToolResult:
     if not path:
-        return {"error":"路径不能为空"}
+        return ToolResult(
+            content="路径不能为空",
+            is_error=True,
+        )
     folders = Path(path)
     if not folders.is_dir():
-        return {"error":"不是目录"}
+        return  ToolResult(
+            content="不是目录",
+            is_error=True,
+        )
     items=folders.iterdir()
     files=[]
+
     for item in items:
         if item.is_file():
            files.append(str(item))
-    return {"files":files}
+
+    files.sort()
+
+    return ToolResult(
+        content='\n'.join(files),
+    )
 
 
 

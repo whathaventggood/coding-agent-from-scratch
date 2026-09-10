@@ -1,4 +1,4 @@
-from main import handle_request,read_file,list_files
+from main import handle_request,read_file,list_files,ToolResult
 
 
 def test_missing_arguments():
@@ -30,28 +30,31 @@ def test_request_must_be_object():
 def test_read_file_success(tmp_path):
     file_path=tmp_path/"hello.txt"
     file_path.write_text("你好 agent",encoding="utf-8")
-    result=read_file(str(file_path))
-    assert result=={
-        "content":"你好 agent"
-    }
+    result = read_file(str(file_path))
+    assert result==ToolResult(
+        content = "你好 agent"
+    )
 
 def test_read_file_missing():
     result=read_file("not_exist.txt")
-    assert result=={
-        "error":"文件不存在"
-    }
+    assert result== ToolResult(
+        content="文件不存在",
+        is_error=True,
+    )
 
 def test_read_file_rejects_directory(tmp_path):
     result=read_file(str(tmp_path))
-    assert result=={
-        "error":"路径是目录"
-    }
+    assert result == ToolResult(
+        content="路径是目录",
+        is_error=True,
+    )
 
 def test_read_file_rejects_empty_path():
     result=read_file("")
-    assert result=={
-        "error":"路径不能为空"
-    }
+    assert result==ToolResult(
+        content="路径不能为空",
+        is_error=True,
+    )
 
 
 def test_list_files_success(tmp_path):
@@ -64,24 +67,29 @@ def test_list_files_success(tmp_path):
 
     result=list_files(str(tmp_path))
 
-    assert set(result["files"])=={
-        str(file_a),
-        str(file_b)
-    }
+    expected_content='\n'.join(
+        sorted([str(file_a),str(file_b)])
+    )
+
+    assert result==ToolResult(
+        content=expected_content
+    )
 
 def test_list_files_rejects_empty_path():
     result=list_files("")
-    assert result=={
-        "error":"路径不能为空"
-    }
+    assert result==ToolResult(
+        content="路径不能为空",
+        is_error=True,
+    )
 
 def test_list_files_rejects_file_path(tmp_path):
     file_path=tmp_path/"hello.txt"
     file_path.write_text("hello",encoding="utf-8")
     result=list_files(str(file_path))
-    assert result=={
-        "error":"不是目录"
-    }
+    assert result==ToolResult(
+        content="不是目录",
+        is_error=True,
+    )
 
 
 def test_missing_path():
