@@ -81,7 +81,7 @@ def dispatch(tool_name:str,path:str)->ToolResult:
 
 
 #解析json内容
-def parse_request(raw:str)->dict[str,str]:
+def parse_request(raw:str)->dict[str,str]|ToolRequest:
     try:
         request=json.loads(raw)
     except json.JSONDecodeError:
@@ -114,13 +114,19 @@ def parse_request(raw:str)->dict[str,str]:
     if not isinstance(path,str):
         return {"error":"path必须是字符串"}
 
-    return {"name":name,"path":path}
+    return ToolRequest(
+        name=name,
+        path=path,
+    )
 
 
 
 #处理请求
 def handle_request(raw: str) -> dict[str,str] | ToolResult:
     result=parse_request(raw)
-    if "error" in result:
+    if isinstance(result,dict):
         return result
-    return dispatch(result["name"],result["path"])
+    return dispatch(
+        result.name,
+        result.path,
+    )

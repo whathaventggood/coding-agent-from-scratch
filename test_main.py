@@ -1,4 +1,4 @@
-from main import handle_request,read_file,list_files,ToolResult,ToolRequest
+from main import handle_request,read_file,list_files,ToolResult,ToolRequest,parse_request
 
 
 def test_missing_arguments():
@@ -142,6 +142,16 @@ def test_tool_request_fielsd():
         name="read_file",
         path="demo.txt",
     )
-    
+
     assert request.name == "read_file"
     assert request.path == "demo.txt"
+
+def test_parse_request_success():
+    result = parse_request(
+        '{"name": "read_file", "arguments": {"path": "demo.txt"}}'
+    )
+
+    assert result == ToolRequest(
+        name="read_file",
+        path="demo.txt",
+    )
