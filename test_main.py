@@ -1,6 +1,7 @@
 from main import handle_request,parse_request
 from models import ToolResult,ToolRequest
 from file_tools import read_file,list_files
+import json
 
 
 def test_missing_arguments():
@@ -164,4 +165,17 @@ def test_parse_request_success():
     assert result == ToolRequest(
         name="read_file",
         path="demo.txt",
+    )
+
+
+def test_handle_request_read_file_success(tmp_path):
+    file_path=tmp_path/"hello.txt"
+    file_path.write_text("你好 agent",encoding="utf-8")
+    raw=json.dumps({
+        "name": "read_file",
+        "arguments": {"path": str(file_path)},
+    })
+    result=handle_request(raw)
+    assert result==ToolResult(
+        content="你好 agent"
     )
