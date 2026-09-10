@@ -179,3 +179,28 @@ def test_handle_request_read_file_success(tmp_path):
     assert result==ToolResult(
         content="你好 agent"
     )
+
+def test_handle_request_list_files_success(tmp_path):
+    file_a=tmp_path/"a.txt"
+    file_b=tmp_path/"b.py"
+    folder = tmp_path / "nested"
+    file_a.write_text("A",encoding="utf-8")
+    file_b.write_text("B",encoding="utf-8")
+    folder.mkdir()
+
+    raw = json.dumps({
+        "name": "list_files",
+        "arguments": {"path": str(tmp_path)},
+    })
+
+    expected_content = '\n'.join(
+        sorted([str(file_a), str(file_b)])
+    )
+
+    result = handle_request(raw)
+
+    assert result== ToolResult(
+        content=expected_content,
+        is_error=False,
+    )
+
