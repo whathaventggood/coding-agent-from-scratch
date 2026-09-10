@@ -117,9 +117,10 @@ def test_unknown_tool():
         '{"name": "attack", "arguments": {"path": "demo.txt"}}'
     )
 
-    assert result == {
-        "error": "未知工具"
-    }
+    assert result == ToolResult(
+        content="未知工具",
+        is_error=True,
+    )
 
 def test_name_must_be_string():
     result=handle_request(

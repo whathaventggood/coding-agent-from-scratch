@@ -62,13 +62,16 @@ def list_files(path:str)->ToolResult:
 
 
 #选择工具执行
-def dispatch(tool_name,path):
+def dispatch(tool_name:str,path:str)->ToolResult:
     if tool_name=="read_file":
         return read_file(path)
     elif tool_name=="list_files":
         return list_files(path)
     else:
-        return {"error":"未知工具"}
+        return ToolResult(
+            content="未知工具",
+            is_error=True,
+        )
 
 
 
@@ -111,7 +114,7 @@ def parse_request(raw:str)->dict[str,str]:
 
 
 #处理请求
-def handle_request(raw):
+def handle_request(raw: str) -> dict[str,str] | ToolResult:
     result=parse_request(raw)
     if "error" in result:
         return result
