@@ -68,3 +68,47 @@ def test_list_files_success(tmp_path):
         str(file_a),
         str(file_b)
     }
+
+def test_list_files_rejects_empty_path():
+    result=list_files("")
+    assert result=={
+        "error":"路径不能为空"
+    }
+
+def test_list_files_rejects_file_path(tmp_path):
+    file_path=tmp_path/"hello.txt"
+    file_path.write_text("hello",encoding="utf-8")
+    result=list_files(str(file_path))
+    assert result=={
+        "error":"不是目录"
+    }
+
+
+def test_missing_path():
+    result = handle_request(
+        '{"name": "read_file", "arguments": {}}'
+    )
+
+    assert result == {
+        "error":"缺少path"
+    }
+
+
+def test_invalid_json():
+    result = handle_request(
+        '{"name": "read_file"'
+    )
+
+    assert result == {
+        "error": "json格式错误"
+    }
+
+
+def test_unknown_tool():
+    result = handle_request(
+        '{"name": "attack", "arguments": {"path": "demo.txt"}}'
+    )
+
+    assert result == {
+        "error": "未知工具"
+    }
