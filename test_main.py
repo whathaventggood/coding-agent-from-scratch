@@ -1,4 +1,4 @@
-from main import handle_request,read_file,list_files,ToolResult
+from main import handle_request,read_file,list_files,ToolResult,ToolRequest
 
 
 def test_missing_arguments():
@@ -136,3 +136,12 @@ def test_path_must_be_string():
     assert result=={
         "error":"path必须是字符串"
     }
+
+def test_tool_request_fielsd():
+    request=ToolRequest(
+        name="read_file",
+        path="demo.txt",
+    )
+    
+    assert request.name == "read_file"
+    assert request.path == "demo.txt"

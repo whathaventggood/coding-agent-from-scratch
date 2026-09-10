@@ -7,6 +7,11 @@ class ToolResult:
     content: str
     is_error: bool=False
 
+@dataclass
+class ToolRequest:
+    name:str
+    path:str
+
 
 #读工具
 def read_file(path:str)->ToolResult:
