@@ -11,3 +11,4 @@ class ToolResult:
 class ToolRequest:
     name:str
     path:str
+    keyword:str|None=None

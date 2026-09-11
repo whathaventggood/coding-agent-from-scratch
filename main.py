@@ -1,13 +1,27 @@
 import json
 from models import ToolRequest,ToolResult
-from file_tools import read_file,list_files
+from file_tools import read_file,list_files,search_file
 
 #选择工具执行
-def dispatch(tool_name:str,path:str)->ToolResult:
+def dispatch(
+        tool_name:str,
+        path:str,
+        keyword:str|None=None,
+)->ToolResult:
+
     if tool_name=="read_file":
         return read_file(path)
+
     elif tool_name=="list_files":
         return list_files(path)
+
+    elif tool_name=="search_file":
+        if keyword is None:
+            return ToolResult(
+                content="缺少keyword",
+                is_error=True,
+            )
+        return search_file(path, keyword)
     else:
         return ToolResult(
             content="未知工具",
@@ -50,9 +64,23 @@ def parse_request(raw:str)->dict[str,str]|ToolRequest:
     if not isinstance(path,str):
         return {"error":"path必须是字符串"}
 
+    keyword=None
+    if name=="search_file":
+        keyword = arguments.get("keyword")
+
+        if keyword is None:
+            return {"error":"缺少keyword"}
+
+        if not isinstance(keyword,str):
+            return {"error":"keyword必须是字符串"}
+
+        if keyword == "":
+            return {"error":"keyword不能为空"}
+
     return ToolRequest(
         name=name,
         path=path,
+        keyword=keyword,
     )
 
 
@@ -68,4 +96,5 @@ def handle_request(raw: str) ->  ToolResult:
     return dispatch(
         result.name,
         result.path,
+        result.keyword,
     )
