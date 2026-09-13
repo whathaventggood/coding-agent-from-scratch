@@ -13,7 +13,11 @@ def execute_tool_call(tool_call: dict) -> ToolResult:
     return handle_request(raw)
 
 
-def run_agent(model, user_message: str) -> str:
+def run_agent(
+        model,
+        user_message: str,
+        max_steps: int = 5,
+) -> str:
     messages = [
         {
             "role": "user",
@@ -21,7 +25,7 @@ def run_agent(model, user_message: str) -> str:
         }
     ]
 
-    while True:
+    for _ in range(max_steps):
         response = model(messages)
 
         if response["type"] == "final":
@@ -39,3 +43,5 @@ def run_agent(model, user_message: str) -> str:
 
         else:
             return "未知模型响应类型"
+
+    return "达到最大步骤数"
