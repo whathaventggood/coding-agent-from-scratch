@@ -76,3 +76,62 @@ def search_file(path:str,keyword:str)->ToolResult:
     return ToolResult(
         content='\n'.join(matches),
     )
+
+
+def replace_text_once(
+    text: str,
+    old_text: str,
+    new_text: str,
+) -> ToolResult:
+    match_count = text.count(old_text)
+
+    if match_count == 0:
+        return ToolResult(
+            content="未找到待替换文本",
+            is_error=True,
+        )
+
+    if match_count > 1:
+        return ToolResult(
+            content="待替换文本出现多次",
+            is_error=True,
+        )
+
+    updated_text = text.replace(
+        old_text,
+        new_text,
+        1,
+    )
+
+    return ToolResult(
+        content=updated_text,
+        is_error=False,
+    )
+
+
+def edit_file(
+    path: str,
+    old_text: str,
+    new_text: str,
+) -> ToolResult:
+    read_result = read_file(path)
+
+    if read_result.is_error:
+        return read_result
+
+    replace_result = replace_text_once(
+        read_result.content,
+        old_text,
+        new_text,
+    )
+
+    if replace_result.is_error:
+        return replace_result
+
+    file_path = Path(path)
+    file_path.write_text(
+        replace_result.content,
+        encoding="utf-8",
+    )
+
+    return replace_result

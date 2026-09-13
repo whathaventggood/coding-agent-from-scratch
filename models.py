@@ -12,3 +12,5 @@ class ToolRequest:
     name:str
     path:str
     keyword:str|None=None
+    old_text:str|None=None
+    new_text:str|None=None
