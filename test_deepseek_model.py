@@ -195,7 +195,7 @@ def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
                 tool["function"]["name"]
                 for tool in kwargs["tools"]
             }
-            assert names == {"read_file", "run_tests"}
+            assert names == {"read_file", "search_file", "run_tests"}
             return first_response
 
         tool_message = kwargs["messages"][-1]
@@ -221,3 +221,55 @@ def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
 
     assert answer == "测试通过"
     assert client.chat.completions.create.call_count == 2
+
+
+def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    note = workspace / "note.txt"
+    note.write_text("旧内容\n", encoding="utf-8")
+
+    tool_call = Mock()
+    tool_call.id = "call_edit_1"
+    tool_call.function.name = "edit_file"
+    tool_call.function.arguments = json.dumps({
+        "path": "note.txt",
+        "old_text": "旧内容",
+        "new_text": "新内容",
+    })
+
+    request_message = Mock(tool_calls=[tool_call], content=None)
+    final_message = Mock(tool_calls=None, content="已修改")
+    client = Mock()
+
+    def fake_create(**kwargs):
+        if client.chat.completions.create.call_count == 1:
+            names = {tool["function"]["name"] for tool in kwargs["tools"]}
+            assert names == {
+                "read_file", "search_file", "run_tests", "edit_file"
+            }
+            return Mock(choices=[
+                Mock(message=request_message, finish_reason="tool_calls")
+            ])
+
+        tool_message = kwargs["messages"][-1]
+        assert tool_message["tool_call_id"] == "call_edit_1"
+        assert json.loads(tool_message["content"]) == {
+            "content": "新内容\n",
+            "is_error": False,
+        }
+        return Mock(choices=[
+            Mock(message=final_message, finish_reason="stop")
+        ])
+
+    client.chat.completions.create.side_effect = fake_create
+    monkeypatch.setattr(deepseek_model, "create_deepseek_client", lambda: client)
+
+    answer = deepseek_model.read_file_and_answer(
+        "修改 note.txt",
+        workspace_root=str(workspace),
+        allow_edit=True,
+    )
+
+    assert answer == "已修改"
+    assert note.read_text(encoding="utf-8") == "新内容\n"

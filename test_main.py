@@ -649,7 +649,7 @@ def test_run_tests_in_trusted_workspace(tmp_path):
 
     raw = json.dumps({
         "name": "run_tests",
-        "arguments": {"path": str(workspace)},
+        "arguments": {"path": "."},
     })
 
     result = handle_request(raw, workspace_root=str(workspace))
@@ -675,3 +675,53 @@ def test_run_tests_rejects_outside_workspace(tmp_path):
         content="工作目录超出允许范围",
         is_error=True,
     )
+
+
+def test_file_tools_stay_in_workspace(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "inside.txt").write_text("inside", encoding="utf-8")
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+
+    read_inside = json.dumps({
+        "name": "read_file",
+        "arguments": {"path": "inside.txt"},
+    })
+    assert handle_request(
+        read_inside,
+        workspace_root=str(workspace),
+    ) == ToolResult(content="inside", is_error=False)
+
+    read_outside = json.dumps({
+        "name": "read_file",
+        "arguments": {"path": str(outside)},
+    })
+    assert handle_request(
+        read_outside,
+        workspace_root=str(workspace),
+    ) == ToolResult(content="路径超出工作区", is_error=True)
+
+    list_outside = json.dumps({
+        "name": "list_files",
+        "arguments": {"path": str(tmp_path)},
+    })
+    assert handle_request(
+        list_outside,
+        workspace_root=str(workspace),
+    ) == ToolResult(content="路径超出工作区", is_error=True)
+
+    edit_outside = json.dumps({
+        "name": "edit_file",
+        "arguments": {
+            "path": str(outside),
+            "old_text": "secret",
+            "new_text": "changed",
+        },
+    })
+    assert handle_request(
+        edit_outside,
+        workspace_root=str(workspace),
+    ) == ToolResult(content="路径超出工作区", is_error=True)
+    assert outside.read_text(encoding="utf-8") == "secret"

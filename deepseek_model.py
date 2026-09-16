@@ -45,6 +45,43 @@ RUN_TESTS_TOOL = {
 }
 
 
+SEARCH_FILE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_file",
+        "description": "在工作区内的指定文件中查找关键词",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string",},
+                "keyword":{"type":"string"},
+            },
+            "required": ["path","keyword"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+EDIT_FILE_TOOL = {
+    "type": "function",
+    "function":{
+        "name": "edit_file",
+        "description":"将文件中唯一一处 old_text 替换为 new_text",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path":{"type":"string"},
+                "old_text":{"type":"string"},
+                "new_text":{"type":"string"},
+            },
+            "required": ["path","old_text","new_text"],
+            "additionalProperties": False,
+        }
+    }
+}
+
+
 def create_deepseek_client() -> OpenAI:
     api_key = os.getenv("DEEPSEEK_API_KEY")
 
@@ -101,7 +138,15 @@ def request_file_read(prompt: str):
     return response.choices[0].message  # 还需调用message.tool_calls
 
 
-def read_file_and_answer(prompt: str, max_steps: int = 5, workspace_root: str | None = None,) -> str:
+def read_file_and_answer(
+        prompt: str,
+        max_steps: int = 5,
+        workspace_root: str | None = None,
+        allow_edit: bool = False,
+) -> str:
+    if allow_edit and workspace_root is None:
+        raise ValueError("编辑工具需要受信工作区")
+
     client = create_deepseek_client()
     messages = [{"role": "user", "content": prompt}]
 
@@ -109,8 +154,12 @@ def read_file_and_answer(prompt: str, max_steps: int = 5, workspace_root: str | 
     allowed_tool_names = {"read_file"}
 
     if workspace_root is not None:
-        available_tools.append(RUN_TESTS_TOOL)
-        allowed_tool_names.add("run_tests")
+        available_tools.extend([SEARCH_FILE_TOOL, RUN_TESTS_TOOL])
+        allowed_tool_names.update({"search_file", "run_tests"})
+
+        if allow_edit:
+            available_tools.append(EDIT_FILE_TOOL)
+            allowed_tool_names.add("edit_file")
 
     for _ in range(max_steps):
         response = client.chat.completions.create(

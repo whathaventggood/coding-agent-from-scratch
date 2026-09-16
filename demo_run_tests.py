@@ -1,12 +1,9 @@
-import os
 from pathlib import Path
-
 from deepseek_model import read_file_and_answer
 
 
 if __name__ == "__main__":
     workspace_root = Path(__file__).resolve().parent
-    os.chdir(workspace_root)
 
     answer = read_file_and_answer(
         "请调用 run_tests 工具，path 参数填写 '.'，"

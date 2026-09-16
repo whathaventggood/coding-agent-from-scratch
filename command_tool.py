@@ -1,11 +1,16 @@
 from models import ToolResult
 from r4_practice import run_allowed_command
-
+from pathlib import Path
 
 def run_tests(cwd: str, workspace_root: str) -> ToolResult:
+    cwd_path = Path(cwd)          #将路径字符串转成路径对象
+
+    if not cwd_path.is_absolute():
+        cwd_path = Path(workspace_root) / cwd_path
+
     result = run_allowed_command(
         "project_tests",
-        cwd,
+        cwd_path,
         workspace_root,
         timeout=30,
     )

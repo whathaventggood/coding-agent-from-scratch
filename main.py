@@ -2,7 +2,22 @@ import json
 from models import ToolRequest, ToolResult
 from file_tools import read_file, list_files, search_file, edit_file
 from command_tool import run_tests
+from pathlib import Path
 
+
+def resolve_workspace_path(path: str, workspace_root: str) -> str | None:
+    root = Path(workspace_root).resolve()
+    target = Path(path)
+
+    if not target.is_absolute():
+        target = root / path
+
+    target = target.resolve()
+
+    if not target.is_relative_to(root):
+        return None
+
+    return str(target)
 
 # 选择工具执行
 def dispatch(
@@ -13,6 +28,19 @@ def dispatch(
         new_text: str | None = None,
         workspace_root: str | None = None,
 ) -> ToolResult:
+    file_tools = {"read_file", "list_files", "search_file", "edit_file"}
+
+    if workspace_root is not None and tool_name in file_tools and path:
+        resolve_path = resolve_workspace_path(path, workspace_root)
+
+        if resolve_path is None:
+            return ToolResult(
+                content = "路径超出工作区",
+                is_error=True,
+            )
+
+        path = resolve_path
+
     if tool_name == "read_file":
         return read_file(path)
 
