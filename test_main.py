@@ -637,3 +637,41 @@ def test_parse_edit_request_rejects_invalid_text_arguments():
         })
         result = parse_request(raw)
         assert result == expected
+
+
+def test_run_tests_in_trusted_workspace(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "test_smoke.py").write_text(
+        "def test_smoke():\n    assert 1 + 1 == 2\n",
+        encoding="utf-8",
+    )
+
+    raw = json.dumps({
+        "name": "run_tests",
+        "arguments": {"path": str(workspace)},
+    })
+
+    result = handle_request(raw, workspace_root=str(workspace))
+
+    assert result.is_error is False
+    assert "1 passed" in result.content
+
+
+def test_run_tests_rejects_outside_workspace(tmp_path):
+    workspace = tmp_path / "workspace"
+    outside = tmp_path / "outside"
+    workspace.mkdir()
+    outside.mkdir()
+
+    raw = json.dumps({
+        "name": "run_tests",
+        "arguments": {"path": str(outside)},
+    })
+
+    result = handle_request(raw, workspace_root=str(workspace))
+
+    assert result == ToolResult(
+        content="工作目录超出允许范围",
+        is_error=True,
+    )

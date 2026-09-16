@@ -1,6 +1,7 @@
 import json
 from models import ToolRequest, ToolResult
 from file_tools import read_file, list_files, search_file, edit_file
+from command_tool import run_tests
 
 
 # 选择工具执行
@@ -10,6 +11,7 @@ def dispatch(
         keyword: str | None = None,
         old_text: str | None = None,
         new_text: str | None = None,
+        workspace_root: str | None = None,
 ) -> ToolResult:
     if tool_name == "read_file":
         return read_file(path)
@@ -37,6 +39,15 @@ def dispatch(
                 is_error=True,
             )
         return edit_file(path, old_text, new_text)
+
+    elif tool_name == "run_tests":
+        if workspace_root is None:
+            return ToolResult(
+                content="缺少受信工作区",
+                is_error=True,
+            )
+        return run_tests(path, workspace_root)
+
     else:
         return ToolResult(
             content="未知工具",
@@ -122,17 +133,23 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
 
 
 # 处理请求
-def handle_request(raw: str) -> ToolResult:
+def handle_request(
+        raw: str,
+        workspace_root: str | None = None,
+) -> ToolResult:
     result = parse_request(raw)
+
     if isinstance(result, dict):
         return ToolResult(
             content=result["error"],
             is_error=True,
         )
+
     return dispatch(
         result.name,
         result.path,
         result.keyword,
         result.old_text,
         result.new_text,
+        workspace_root,
     )

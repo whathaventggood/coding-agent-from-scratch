@@ -25,6 +25,26 @@ READ_FILE_TOOL = {
 }
 
 
+RUN_TESTS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "run_tests",
+        "description": "在受信工作区内运行固定的 pytest 测试命令",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "工作区内要运行测试的目录",
+                }
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 def create_deepseek_client() -> OpenAI:
     api_key = os.getenv("DEEPSEEK_API_KEY")
 
@@ -81,15 +101,22 @@ def request_file_read(prompt: str):
     return response.choices[0].message  # 还需调用message.tool_calls
 
 
-def read_file_and_answer(prompt: str, max_steps: int = 5) -> str:
+def read_file_and_answer(prompt: str, max_steps: int = 5, workspace_root: str | None = None,) -> str:
     client = create_deepseek_client()
     messages = [{"role": "user", "content": prompt}]
+
+    available_tools = [READ_FILE_TOOL]
+    allowed_tool_names = {"read_file"}
+
+    if workspace_root is not None:
+        available_tools.append(RUN_TESTS_TOOL)
+        allowed_tool_names.add("run_tests")
 
     for _ in range(max_steps):
         response = client.chat.completions.create(
             model="deepseek-flash",
             messages=messages,
-            tools=[READ_FILE_TOOL],
+            tools=available_tools,
             tool_choice="auto",
             max_tokens=300,
             stream=False,
@@ -106,7 +133,7 @@ def read_file_and_answer(prompt: str, max_steps: int = 5) -> str:
             return message.content or ""
 
         for tool_call in message.tool_calls:
-            if tool_call.function.name != "read_file":
+            if tool_call.function.name not in allowed_tool_names:
                 return "模型请求了未开放的工具"
             try:
                 arguments = json.loads(tool_call.function.arguments)
@@ -120,7 +147,7 @@ def read_file_and_answer(prompt: str, max_steps: int = 5) -> str:
                     "name": tool_call.function.name,
                     "arguments": arguments,
                 })
-                result = handle_request(raw)
+                result = handle_request(raw, workspace_root = workspace_root)
 
             print("本地工具结果：", result)
 

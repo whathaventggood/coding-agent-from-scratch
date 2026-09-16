@@ -16,6 +16,7 @@
 - 使用模拟模型响应演练工具调用与最终回答循环，并限制最大执行步数
 - 接入 DeepSeek，实现真实的 read_file 工具调用、结果回传和最大步数限制
 - 将模型生成的无效 JSON 参数转换为工具错误并回传
+- 在本地指定受信工作区后，允许 DeepSeek 调用固定的 pytest 测试工具；工作目录越界会被拒绝
 
 ## 安装依赖
 
@@ -39,4 +40,14 @@ export DEEPSEEK_API_KEY="你的密钥"
 python deepseek_model.py
 ```
 
-当前真实模型循环只开放 `read_file` 工具。
+默认只开放 `read_file`；本地调用方指定受信工作区后，额外开放 `run_tests`。
+
+## 运行受控测试演示
+
+仅在信任本仓库测试代码、并已配置 `DEEPSEEK_API_KEY` 时运行：
+
+```bash
+.venv/bin/python demo_run_tests.py
+```
+
+演示脚本把当前项目设为受信工作区，向模型开放 `read_file` 和 `run_tests`。`run_tests` 只执行固定的 `python -m pytest -q`，模型不能通过工具参数改变工作区根目录。运行会产生真实 API 请求；路径检查和 `shell=False` 不构成恶意代码沙箱。

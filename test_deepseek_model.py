@@ -163,3 +163,61 @@ def test_read_loop_stops_at_max_steps(tmp_path, monkeypatch):
 
     assert answer == "达到最大步骤数"
     assert client.chat.completions.create.call_count == 3
+
+
+def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "test_smoke.py").write_text(
+        "def test_smoke():\n    assert 1 + 1 == 2\n",
+        encoding="utf-8",
+    )
+
+    tool_call = Mock()
+    tool_call.id = "call_tests_1"
+    tool_call.function.name = "run_tests"
+    tool_call.function.arguments = json.dumps({"path": str(workspace)})
+
+    request_message = Mock(tool_calls=[tool_call], content=None)
+    final_message = Mock(tool_calls=None, content="测试通过")
+    first_response = Mock(
+        choices=[Mock(message=request_message, finish_reason="tool_calls")]
+    )
+    final_response = Mock(
+        choices=[Mock(message=final_message, finish_reason="stop")]
+    )
+
+    client = Mock()
+
+    def fake_create(**kwargs):
+        if client.chat.completions.create.call_count == 1:
+            names = {
+                tool["function"]["name"]
+                for tool in kwargs["tools"]
+            }
+            assert names == {"read_file", "run_tests"}
+            return first_response
+
+        tool_message = kwargs["messages"][-1]
+        assert tool_message["role"] == "tool"
+        assert tool_message["tool_call_id"] == "call_tests_1"
+
+        payload = json.loads(tool_message["content"])
+        assert payload["is_error"] is False
+        assert "1 passed" in payload["content"]
+        return final_response
+
+    client.chat.completions.create.side_effect = fake_create
+    monkeypatch.setattr(
+        deepseek_model,
+        "create_deepseek_client",
+        lambda: client,
+    )
+
+    answer = deepseek_model.read_file_and_answer(
+        "运行工作区测试",
+        workspace_root=str(workspace),
+    )
+
+    assert answer == "测试通过"
+    assert client.chat.completions.create.call_count == 2
