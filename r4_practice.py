@@ -74,7 +74,14 @@ def run_command(command, cwd, timeout=2):
         }
 
 
-def run_allowed_command(name, cwd, timeout=2):
+def is_allowed_cwd(cwd, workspace_root):
+    resolved_cwd = Path(cwd).resolve()
+    resolved_root = Path(workspace_root).resolve()
+
+    return resolved_cwd.is_relative_to(resolved_root)
+
+
+def run_allowed_command(name, cwd, workspace_root, timeout=2):
     command = ALLOWED_COMMANDS.get(name)
 
     if command is None:
@@ -82,6 +89,14 @@ def run_allowed_command(name, cwd, timeout=2):
             "returncode": None,
             "stdout": "",
             "stderr": "命令不在允许列表",
+            "timed_out": False,
+        }
+
+    if not is_allowed_cwd(cwd, workspace_root):
+        return {
+            "returncode": None,
+            "stdout": "",
+            "stderr": "工作目录超出允许范围",
             "timed_out": False,
         }
 
@@ -93,5 +108,12 @@ if __name__ == "__main__":
     parent_dir = project_dir.parent
 
     print("父进程当前目录: ", project_dir)
-    print(run_allowed_command("show_cwd", parent_dir, 2))
+    print(
+        run_allowed_command(
+            "show_cwd",
+            parent_dir,
+            project_dir,
+            timeout = 2,
+        )
+    )
     print("父进程运行后目录: ", Path.cwd())
