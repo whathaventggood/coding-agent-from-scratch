@@ -82,6 +82,23 @@ EDIT_FILE_TOOL = {
 }
 
 
+LIST_FILES_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "list_files",
+        "description": "列出工作区指定目录中的文件",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 def create_deepseek_client() -> OpenAI:
     api_key = os.getenv("DEEPSEEK_API_KEY")
 
@@ -154,8 +171,8 @@ def read_file_and_answer(
     allowed_tool_names = {"read_file"}
 
     if workspace_root is not None:
-        available_tools.extend([SEARCH_FILE_TOOL, RUN_TESTS_TOOL])
-        allowed_tool_names.update({"search_file", "run_tests"})
+        available_tools.extend([LIST_FILES_TOOL,SEARCH_FILE_TOOL, RUN_TESTS_TOOL])
+        allowed_tool_names.update({"list_files", "search_file", "run_tests"})
 
         if allow_edit:
             available_tools.append(EDIT_FILE_TOOL)
