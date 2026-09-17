@@ -19,6 +19,7 @@
 - 在本地指定受信工作区后，允许 DeepSeek 调用固定的 pytest 测试工具；工作目录越界会被拒绝
 - 在受信工作区内向模型开放单文件关键词搜索；仅在本地调用方明确开启 `allow_edit=True` 时开放精确编辑
 - 工作区内的文件工具相对路径从工作区根目录解析，越界路径被拒绝
+- 真实 DeepSeek 请求和本地工具执行共用一个 Agent Loop，并保留工具调用 ID
 
 ## 安装依赖
 
@@ -42,7 +43,7 @@ export DEEPSEEK_API_KEY="你的密钥"
 python deepseek_model.py
 ```
 
-默认只开放 `read_file`；本地调用方指定受信工作区后，额外开放 `search_file` 和 `run_tests`。`edit_file` 还需要调用方显式传入 `allow_edit=True`。
+默认只开放 `read_file`；本地调用方指定受信工作区后，额外开放 `list_files`、`search_file` 和 `run_tests`。`edit_file` 还需要调用方显式传入 `allow_edit=True`。
 
 ## 运行受控测试演示
 
@@ -52,7 +53,7 @@ python deepseek_model.py
 .venv/bin/python demo_run_tests.py
 ```
 
-演示脚本把当前项目设为受信工作区，向模型开放 `read_file`、`search_file` 和 `run_tests`，不开放编辑。`run_tests` 只执行固定的 `python -m pytest -q`，模型不能通过工具参数改变工作区根目录。运行会产生真实 API 请求；路径检查和 `shell=False` 不构成恶意代码沙箱。
+演示脚本把当前项目设为受信工作区，向模型开放 `read_file`、`list_files`、`search_file` 和 `run_tests`，不开放编辑。`run_tests` 只执行固定的 `python -m pytest -q`，模型不能通过工具参数改变工作区根目录。运行会产生真实 API 请求；路径检查和 `shell=False` 不构成恶意代码沙箱。
 
 ## 运行临时工作区修复演示
 
@@ -62,4 +63,4 @@ python deepseek_model.py
 .venv/bin/python demo_fix.py
 ```
 
-脚本创建临时工作区，放入一个故意写错的加法函数和一条测试，向模型开放搜索、精确编辑和固定测试工具。模型回答后，脚本会独立重跑测试；临时工作区在脚本结束后自动清理。运行会产生真实 API 请求。这里的路径限制和固定命令仍不是恶意代码沙箱，只应使用受信的演示内容。
+脚本创建临时工作区，放入一个故意写错的加法函数和一条测试。它先确认测试失败，再让模型根据失败信息检查、修复和复测；模型回答后，脚本会独立重跑测试。临时工作区在脚本结束后自动清理。运行会产生真实 API 请求。这里的路径限制和固定命令仍不是恶意代码沙箱，只应使用受信的演示内容。

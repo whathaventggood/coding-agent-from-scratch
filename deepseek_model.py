@@ -1,8 +1,6 @@
 import os
-import json
-from main import handle_request
 from openai import OpenAI
-from models import ToolResult
+from agent_loop import run_agent
 
 # 工具清单
 READ_FILE_TOOL = {
@@ -24,7 +22,6 @@ READ_FILE_TOOL = {
     },
 }
 
-
 RUN_TESTS_TOOL = {
     "type": "function",
     "function": {
@@ -44,7 +41,6 @@ RUN_TESTS_TOOL = {
     },
 }
 
-
 SEARCH_FILE_TOOL = {
     "type": "function",
     "function": {
@@ -53,34 +49,32 @@ SEARCH_FILE_TOOL = {
         "parameters": {
             "type": "object",
             "properties": {
-                "path": {"type": "string",},
-                "keyword":{"type":"string"},
+                "path": {"type": "string", },
+                "keyword": {"type": "string"},
             },
-            "required": ["path","keyword"],
+            "required": ["path", "keyword"],
             "additionalProperties": False,
         },
     },
 }
 
-
 EDIT_FILE_TOOL = {
     "type": "function",
-    "function":{
+    "function": {
         "name": "edit_file",
-        "description":"将文件中唯一一处 old_text 替换为 new_text",
+        "description": "将文件中唯一一处 old_text 替换为 new_text",
         "parameters": {
             "type": "object",
             "properties": {
-                "path":{"type":"string"},
-                "old_text":{"type":"string"},
-                "new_text":{"type":"string"},
+                "path": {"type": "string"},
+                "old_text": {"type": "string"},
+                "new_text": {"type": "string"},
             },
-            "required": ["path","old_text","new_text"],
+            "required": ["path", "old_text", "new_text"],
             "additionalProperties": False,
         }
     }
 }
-
 
 LIST_FILES_TOOL = {
     "type": "function",
@@ -165,20 +159,26 @@ def read_file_and_answer(
         raise ValueError("编辑工具需要受信工作区")
 
     client = create_deepseek_client()
-    messages = [{"role": "user", "content": prompt}]
-
     available_tools = [READ_FILE_TOOL]
     allowed_tool_names = {"read_file"}
 
     if workspace_root is not None:
-        available_tools.extend([LIST_FILES_TOOL,SEARCH_FILE_TOOL, RUN_TESTS_TOOL])
-        allowed_tool_names.update({"list_files", "search_file", "run_tests"})
+        available_tools.extend([
+            LIST_FILES_TOOL,
+            SEARCH_FILE_TOOL,
+            RUN_TESTS_TOOL,
+        ])
+        allowed_tool_names.update({
+            "list_files",
+            "search_file",
+            "run_tests",
+        })
 
         if allow_edit:
             available_tools.append(EDIT_FILE_TOOL)
             allowed_tool_names.add("edit_file")
 
-    for _ in range(max_steps):
+    def model(messages):
         response = client.chat.completions.create(
             model="deepseek-flash",
             messages=messages,
@@ -189,44 +189,38 @@ def read_file_and_answer(
             extra_body={"thinking": {"type": "disabled"}},
         )
 
-        choice = response.choices[0]  # response.choices被设计成列表，通常需要获取的消息是第一条
+        choice = response.choices[0]
         message = choice.message
-        messages.append(message)
 
         if not message.tool_calls:
             if choice.finish_reason != "stop":
-                return "模型响应未正常完成"
-            return message.content or ""
+                return {"type": "incomplete"}
+            return {
+                "type": "final",
+                "content": message.content or "",
+            }
 
-        for tool_call in message.tool_calls:
-            if tool_call.function.name not in allowed_tool_names:
-                return "模型请求了未开放的工具"
-            try:
-                arguments = json.loads(tool_call.function.arguments)
-            except json.JSONDecodeError:
-                result = ToolResult(
-                    content="工具参数不是有效JSON",
-                    is_error=True,
-                )
-            else:
-                raw = json.dumps({
-                    "name": tool_call.function.name,
-                    "arguments": arguments,
-                })
-                result = handle_request(raw, workspace_root = workspace_root)
-
-            print("本地工具结果：", result)
-
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": json.dumps({
-                    "content": result.content,
-                    "is_error": result.is_error,
-                }, ensure_ascii=False),
+        calls = []
+        for call in message.tool_calls:
+            calls.append({
+                "id": call.id,
+                "name": call.function.name,
+                "arguments": call.function.arguments,
             })
 
-    return "达到最大步骤数"
+        return {
+            "type": "tool_calls",
+            "assistant_message": message,
+            "calls": calls,
+        }
+
+    return run_agent(
+        model,
+        prompt,
+        max_steps=max_steps,
+        workspace_root=workspace_root,
+        allowed_tool_names=allowed_tool_names,
+    )
 
 
 if __name__ == "__main__":

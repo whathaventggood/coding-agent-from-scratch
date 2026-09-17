@@ -1,35 +1,45 @@
-from models import ToolResult
-from r4_practice import run_allowed_command
+import os
+import subprocess
+import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from models import ToolResult
+
 
 def run_tests(cwd: str, workspace_root: str) -> ToolResult:
-    cwd_path = Path(cwd)          #将路径字符串转成路径对象
+    root = Path(workspace_root).resolve()
+    directory = Path(cwd)
+    if not directory.is_absolute():
+        directory = root / directory
+    directory = directory.resolve()
 
-    if not cwd_path.is_absolute():
-        cwd_path = Path(workspace_root) / cwd_path
+    if not directory.is_relative_to(root):
+        return ToolResult("工作目录超出允许范围", is_error=True)
 
-    result = run_allowed_command(
-        "project_tests",
-        cwd_path,
-        workspace_root,
-        timeout=30,
-    )
+    try:
+        # 每次运行使用新缓存目录，避免快速编辑后读到旧的 .pyc。
+        with TemporaryDirectory(prefix="agent-pycache-") as cache_dir:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q"],
+                cwd=directory,
+                timeout=30,
+                capture_output=True,
+                text=True,
+                shell=False,
+                env={**os.environ, "PYTHONPYCACHEPREFIX": cache_dir},
+            )
+    except subprocess.TimeoutExpired:
+        return ToolResult("命令执行超时", is_error=True)
+    except FileNotFoundError:
+        return ToolResult("命令启动失败", is_error=True)
 
-    if result["returncode"] is None:
-        return ToolResult(
-            content=result["stderr"],
-            is_error=True,
-        )
-
-    content = f"退出码: {result['returncode']}\n{result['stdout']}"
-
-    if result["stderr"]:
-        content += f"\n标准错误:\n{result['stderr']}"
-
-    if result["stdout_truncated"] or result["stderr_truncated"]:
+    stdout = result.stdout[:1000]
+    stderr = result.stderr[:1000]
+    content = f"退出码: {result.returncode}\n{stdout}"
+    if stderr:
+        content += f"\n标准错误:\n{stderr}"
+    if len(result.stdout) > 1000 or len(result.stderr) > 1000:
         content += "\n[输出已截断]"
 
-    return ToolResult(
-        content=content,
-        is_error=result["returncode"] != 0,
-    )
+    return ToolResult(content, is_error=result.returncode != 0)

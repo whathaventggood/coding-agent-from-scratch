@@ -20,12 +20,16 @@ def main():
             encoding="utf-8",
         )
 
+        before = run_tests(".", str(workspace))
+        print("修复前测试：", before)
+        if not before.is_error:
+            raise SystemExit("示例错误未触发测试失败")
+
         answer = read_file_and_answer(
-            "工作区的 calculator.py 有一个加法错误。"
-            "先调用 search_file，在 calculator.py 中搜索 'return a - b'；"
-            "然后调用 edit_file，只把 'return a - b' 改为 'return a + b'；"
-            "最后调用 run_tests，path 填 '.'。"
-            "请根据工具结果报告修复是否成功。",
+            "这是一个受信的临时工作区，里面有一个未通过的测试。"
+            "先调用 run_tests，path 填 '.'，根据失败信息定位问题；"
+            "按需使用文件工具检查并修复代码，再调用 run_tests 复测。"
+            "只有复测通过才能报告修复成功。",
             workspace_root=str(workspace),
             allow_edit=True,
             max_steps=8,
