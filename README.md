@@ -37,6 +37,22 @@ export DEEPSEEK_API_KEY="你的密钥"
 
 不要把真实 API Key 写入代码或提交到 Git。
 
+## 命令行使用
+
+对受信工作区运行任务：
+
+```bash
+.venv/bin/python cli.py --workspace . "请读取 demo.txt 并告诉我内容"
+```
+
+对受信 Git 仓库执行修复任务时，添加 `--allow-edit`；完成后 CLI 会独立运行一次固定的 pytest，并显示当前 Git 状态和已跟踪文件的差异。复验失败时进程以非零状态结束：
+
+```bash
+.venv/bin/python cli.py --workspace /你的/受信仓库 --allow-edit "修复失败的测试并复测"
+```
+
+可用 `--max-steps 8` 调整模型请求次数。差异展示可能包含运行前已有的改动；未跟踪的新文件只会出现在 Git 状态中。非 Git 工作区仍可运行 Agent，但不会展示 Git 差异。
+
 ## 运行 DeepSeek 读取示例
 
 ```bash
