@@ -1,39 +1,190 @@
 import argparse
+import hashlib
+import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from command_tool import run_tests
 from deepseek_model import read_file_and_answer
 
+MISSING_FILE = "<missing>"
 
-def show_workspace_changes(workspace: Path) -> None:
+
+@dataclass
+class WorkspaceSnapshot:
+    is_git_repository: bool
+    files: dict[str, str]
+    message: str | None = None
+
+
+def fingerprint_file(path: Path) -> str:
     try:
-        status = subprocess.run(
-            ["git", "-C", str(workspace), "status", "--short", "--", "."],
+        if path.is_symlink():
+            return f"symlink:{os.readlink(path)}"
+
+        if not path.exists():
+            return MISSING_FILE
+
+        if not path.is_file():
+            return "other"
+
+        digest = hashlib.sha256()
+        with path.open("rb") as file:
+            while chunk := file.read(64 * 1024):
+                digest.update(chunk)
+
+        return digest.hexdigest()
+    except OSError as error:
+        return f"unreadable:{error.errno}"
+
+
+def capture_workspace_snapshot(workspace: Path) -> WorkspaceSnapshot:
+    try:
+        repository_check = subprocess.run(
+            ["git", "-C", str(workspace), "rev-parse", "--is-inside-work-tree"],
             capture_output=True,
             text=True,
         )
     except FileNotFoundError:
-        print("\n未找到 Git，无法展示工作区差异")
-        return
+        return WorkspaceSnapshot(
+            is_git_repository=False,
+            files={},
+            message="未找到 Git，无法记录 Git 基线",
+        )
 
-    if status.returncode != 0:
-        print("\n工作区不是 Git 仓库，无法展示 Git 差异")
-        return
+    if (
+            repository_check.returncode != 0
+            or repository_check.stdout.strip() != "true"
+    ):
+        return WorkspaceSnapshot(
+            is_git_repository=False,
+            files={},
+            message="工作区不是 Git 仓库，无法记录 Git 基线",
+        )
 
-    print("\n当前工作区 Git 状态（可能包含任务开始前的改动）：")
-    print(status.stdout or "无改动")
-
-    diff = subprocess.run(
-        ["git", "-C", str(workspace), "diff", "--no-ext-diff", "--", "."],
+    file_list = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(workspace),
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            ".",
+        ],
         capture_output=True,
         text=True,
     )
-    if diff.returncode == 0 and diff.stdout:
-        print("已跟踪文件的差异：")
-        print(diff.stdout[:12000])
-        if len(diff.stdout) > 12000:
-            print("[差异已截断]")
+
+    if file_list.returncode != 0:
+        return WorkspaceSnapshot(
+            is_git_repository=False,
+            files={},
+            message="无法读取 Git 文件清单",
+        )
+
+    files = {}
+    for relative_path in file_list.stdout.split("\0"):
+        if not relative_path:
+            continue
+
+        files[relative_path] = fingerprint_file(workspace / relative_path)
+
+    return WorkspaceSnapshot(
+        is_git_repository=True,
+        files=files,
+    )
+
+
+def find_workspace_changes(
+        before: WorkspaceSnapshot,
+        after: WorkspaceSnapshot,
+) -> dict[str, list[str]] | None:
+    if not before.is_git_repository or not after.is_git_repository:
+        return None
+
+    changes = {
+        "created": [],
+        "modified": [],
+        "deleted": [],
+    }
+
+    all_paths = sorted(before.files.keys() | after.files.keys())
+
+    for path in all_paths:
+        before_exists = (
+                path in before.files
+                and before.files[path] != MISSING_FILE
+        )
+        after_exists = (
+                path in after.files
+                and after.files[path] != MISSING_FILE
+        )
+
+        if not before_exists and after_exists:
+            changes["created"].append(path)
+        elif before_exists and not after_exists:
+            changes["deleted"].append(path)
+        elif (
+                before_exists
+                and after_exists
+                and before.files[path] != after.files[path]
+        ):
+            changes["modified"].append(path)
+
+    return changes
+
+
+def print_run_report(
+        answer: str | None,
+        check,
+        before: WorkspaceSnapshot | None,
+        after: WorkspaceSnapshot | None,
+        failure_reason: str | None = None,
+) -> None:
+    print("\n=== Coding Agent 运行报告 ===")
+
+    print("\n模型最终回答：")
+    if answer is None:
+        print("模型未返回最终回答")
+    else:
+        print(answer)
+
+    print("\n本地独立复验：")
+    if check is None:
+        print("未执行（未开启编辑模式或模型执行失败）")
+    else:
+        print(check.content)
+
+    print("\n本次运行文件变化：")
+    if before is None or after is None:
+        print("未跟踪（未开启编辑模式）")
+    else:
+        changes = find_workspace_changes(before, after)
+
+        if changes is None:
+            print(f"无法归因：{before.message or after.message}")
+        elif not any(changes.values()):
+            print("无文件变化")
+        else:
+            labels = {
+                "created": "新增或恢复",
+                "modified": "修改",
+                "deleted": "删除",
+            }
+            for change_type, label in labels.items():
+                for path in changes[change_type]:
+                    print(f"- {label}：{path}")
+
+    print("\n运行结果：")
+    if failure_reason is None:
+        print("成功")
+    else:
+        print(f"失败：{failure_reason}")
 
 
 def main():
@@ -50,6 +201,10 @@ def main():
     if args.max_steps < 1:
         parser.error("--max-steps 必须大于 0")
 
+    before = None
+    if args.allow_edit:
+        before = capture_workspace_snapshot(workspace)
+
     try:
         answer = read_file_and_answer(
             args.task,
@@ -58,15 +213,40 @@ def main():
             max_steps=args.max_steps,
         )
     except RuntimeError as error:
-        parser.exit(1, f"{error}\n")
+        after = None
+        if args.allow_edit:
+            after = capture_workspace_snapshot(workspace)
 
-    print(answer)
+        print_run_report(
+            answer=None,
+            check=None,
+            before=before,
+            after=after,
+            failure_reason=f"模型执行失败：{error}",
+        )
+        raise SystemExit(1)
+
+    check = None
+    after = None
+    failure_reason = None
+
     if args.allow_edit:
         check = run_tests(".", str(workspace))
-        print("\n本地独立复验：", check)
-        show_workspace_changes(workspace)
+        after = capture_workspace_snapshot(workspace)
+
         if check.is_error:
-            raise SystemExit(1)
+            failure_reason = "本地独立复验未通过"
+
+    print_run_report(
+        answer=answer,
+        check=check,
+        before=before,
+        after=after,
+        failure_reason=failure_reason,
+    )
+
+    if failure_reason is not None:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
