@@ -1,5 +1,15 @@
 import os
-from openai import OpenAI
+
+from openai import (
+    APIConnectionError,    ##网络或代理连接失败
+    APIStatusError,        #服务器返回其他 HTTP 错误
+    APITimeoutError,       #请求超过等待时间
+    AuthenticationError,   #Key 无效或没有权限
+    OpenAI,
+    OpenAIError,           #SDK 的其他错误
+    RateLimitError,        #请求频率或额度受到限制
+)
+
 from agent_loop import run_agent
 from models import ToolTraceEntry
 
@@ -103,13 +113,45 @@ def create_deepseek_client() -> OpenAI:
     return OpenAI(
         api_key=api_key,
         base_url="https://api.deepseek.com",
+        timeout=30.0,
+        max_retries=1,     #遇到可重试错误时，SDK最多自动重试一次
     )
+
+
+def request_chat_completion(client: OpenAI, **request_options):
+    try:
+        return client.chat.completions.create(**request_options)
+    except AuthenticationError as error:
+        raise RuntimeError(
+            "DeepSeek 鉴权失败，请检查 DEEPSEEK_API_KEY"
+        ) from error
+    except RateLimitError as error:
+        raise RuntimeError(
+            "DeepSeek 请求受到限流，请稍后重试或检查账户额度"
+        ) from error
+    except APITimeoutError as error:
+        raise RuntimeError(
+            "DeepSeek 请求超时，请稍后重试"
+        ) from error
+    except APIConnectionError as error:
+        raise RuntimeError(
+            "无法连接 DeepSeek，请检查网络或代理"
+        ) from error
+    except APIStatusError as error:
+        raise RuntimeError(
+            f"DeepSeek 服务返回错误（HTTP {error.status_code}）"
+        ) from error
+    except OpenAIError as error:
+        raise RuntimeError(
+            "DeepSeek 模型请求失败"
+        ) from error
 
 
 def ask_deepseek(prompt: str) -> str:
     client = create_deepseek_client()
 
-    response = client.chat.completions.create(
+    response = request_chat_completion(
+        client,
         model="deepseek-flash",
         messages=[
             {
@@ -132,7 +174,8 @@ def ask_deepseek(prompt: str) -> str:
 def request_file_read(prompt: str):
     client = create_deepseek_client()
 
-    response = client.chat.completions.create(
+    response = request_chat_completion(
+        client,
         model="deepseek-flash",
         messages=[
             {"role": "user", "content": prompt},
@@ -181,7 +224,8 @@ def read_file_and_answer(
             allowed_tool_names.add("edit_file")
 
     def model(messages):
-        response = client.chat.completions.create(
+        response = request_chat_completion(
+            client,
             model="deepseek-flash",
             messages=messages,
             tools=available_tools,
