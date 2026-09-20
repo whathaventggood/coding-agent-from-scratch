@@ -1,6 +1,7 @@
 import os
 from openai import OpenAI
 from agent_loop import run_agent
+from models import ToolTraceEntry
 
 # 工具清单
 READ_FILE_TOOL = {
@@ -154,6 +155,7 @@ def read_file_and_answer(
         max_steps: int = 5,
         workspace_root: str | None = None,
         allow_edit: bool = False,
+        tool_trace: list[ToolTraceEntry] | None = None,
 ) -> str:
     if allow_edit and workspace_root is None:
         raise ValueError("编辑工具需要受信工作区")
@@ -220,6 +222,7 @@ def read_file_and_answer(
         max_steps=max_steps,
         workspace_root=workspace_root,
         allowed_tool_names=allowed_tool_names,
+        tool_trace=tool_trace,
     )
 
 

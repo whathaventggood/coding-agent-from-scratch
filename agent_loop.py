@@ -1,27 +1,83 @@
 import json
 
 from main import handle_request
-from models import ToolResult
+from models import ToolResult, ToolTraceEntry
 
 
 def execute_tool_call(
-    tool_call: dict,
-    workspace_root: str | None = None,
+        tool_call: dict,
+        workspace_root: str | None = None,
 ) -> ToolResult:
     raw = json.dumps({
         "name": tool_call["name"],
         "arguments": tool_call["arguments"],
     })
 
-    return handle_request(raw, workspace_root = workspace_root)
+    return handle_request(raw, workspace_root=workspace_root)
+
+
+def shorten_text(text: str, limit: int = 160) -> str:
+    compact = " ".join(text.split())
+
+    if not compact:
+        return "无输出"
+
+    if len(compact) <= limit:
+        return compact
+
+    return compact[:limit] + "…"
+
+
+def summarize_tool_result(
+        tool_name: str,
+        result: ToolResult,
+) -> str:
+    if result.is_error:
+        return shorten_text(result.content)
+
+    if tool_name == "read_file":
+        return f"读取成功，返回 {len(result.content)} 个字符"
+
+    if tool_name == "list_files":
+        item_count = len(result.content.splitlines())
+        return f"列出 {item_count} 项"
+
+    if tool_name == "search_file":
+        line_count = len(result.content.splitlines())
+        return f"搜索完成，返回 {line_count} 行结果"
+
+    if tool_name == "edit_file":
+        return "文件编辑完成"
+
+    return shorten_text(result.content)
+
+
+def append_tool_trace(
+        tool_trace: list[ToolTraceEntry] | None,
+        model_step: int,
+        tool_name: str,
+        result: ToolResult,
+) -> None:
+    if tool_trace is None:
+        return
+
+    tool_trace.append(
+        ToolTraceEntry(
+            model_step=model_step,
+            tool_name=tool_name,
+            is_error=result.is_error,
+            summary=summarize_tool_result(tool_name, result),
+        )
+    )
 
 
 def run_agent(
-        model,     #函数
+        model,
         user_message: str,
         max_steps: int = 5,
         workspace_root: str | None = None,
         allowed_tool_names: set[str] | None = None,
+        tool_trace: list[ToolTraceEntry] | None = None,
 ) -> str:
     messages = [
         {
@@ -30,7 +86,7 @@ def run_agent(
         }
     ]
 
-    for _ in range(max_steps):
+    for model_step in range(1, max_steps + 1):
         response = model(messages)
         response_type = response["type"]
 
@@ -42,10 +98,28 @@ def run_agent(
 
         if response_type == "tool_call":
             name = response["name"]
+
             if allowed_tool_names is not None and name not in allowed_tool_names:
-                return "模型请求了未开放的工具"
+                result = ToolResult(
+                    content="模型请求了未开放的工具",
+                    is_error=True,
+                )
+                append_tool_trace(
+                    tool_trace,
+                    model_step,
+                    name,
+                    result,
+                )
+                return result.content
 
             result = execute_tool_call(response, workspace_root)
+            append_tool_trace(
+                tool_trace,
+                model_step,
+                name,
+                result,
+            )
+
             messages.append({
                 "role": "tool",
                 "content": result.content,
@@ -58,8 +132,19 @@ def run_agent(
 
             for call in response["calls"]:
                 name = call["name"]
+
                 if allowed_tool_names is not None and name not in allowed_tool_names:
-                    return "模型请求了未开放的工具"
+                    result = ToolResult(
+                        content="模型请求了未开放的工具",
+                        is_error=True,
+                    )
+                    append_tool_trace(
+                        tool_trace,
+                        model_step,
+                        name,
+                        result,
+                    )
+                    return result.content
 
                 try:
                     arguments = json.loads(call["arguments"])
@@ -70,18 +155,30 @@ def run_agent(
                     )
                 else:
                     result = execute_tool_call(
-                        {"name": name, "arguments": arguments},
+                        {
+                            "name": name,
+                            "arguments": arguments,
+                        },
                         workspace_root,
                     )
 
-                print("本地工具结果：", result)
+                append_tool_trace(
+                    tool_trace,
+                    model_step,
+                    name,
+                    result,
+                )
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call["id"],
-                    "content": json.dumps({
-                        "content": result.content,
-                        "is_error": result.is_error,
-                    }, ensure_ascii=False),
+                    "content": json.dumps(
+                        {
+                            "content": result.content,
+                            "is_error": result.is_error,
+                        },
+                        ensure_ascii=False,
+                    ),
                 })
             continue
 

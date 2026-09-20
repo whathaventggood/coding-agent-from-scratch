@@ -7,6 +7,7 @@ from pathlib import Path
 
 from command_tool import run_tests
 from deepseek_model import read_file_and_answer
+from models import ToolTraceEntry
 
 MISSING_FILE = "<missing>"
 
@@ -141,6 +142,7 @@ def find_workspace_changes(
 
 def print_run_report(
         answer: str | None,
+        tool_trace: list[ToolTraceEntry],
         check,
         before: WorkspaceSnapshot | None,
         after: WorkspaceSnapshot | None,
@@ -153,6 +155,19 @@ def print_run_report(
         print("模型未返回最终回答")
     else:
         print(answer)
+
+    print("\n工具调用轨迹：")
+    if not tool_trace:
+        print("未调用工具")
+    else:
+        for entry in tool_trace:
+            status = "失败" if entry.is_error else "成功"
+            print(
+                f"- 第 {entry.model_step} 次模型请求"
+                f" | {entry.tool_name}"
+                f" | {status}"
+                f" | {entry.summary}"
+            )
 
     print("\n本地独立复验：")
     if check is None:
@@ -205,12 +220,15 @@ def main():
     if args.allow_edit:
         before = capture_workspace_snapshot(workspace)
 
+    tool_trace: list[ToolTraceEntry] = []
+
     try:
         answer = read_file_and_answer(
             args.task,
             workspace_root=str(workspace),
             allow_edit=args.allow_edit,
             max_steps=args.max_steps,
+            tool_trace=tool_trace,
         )
     except RuntimeError as error:
         after = None
@@ -219,6 +237,7 @@ def main():
 
         print_run_report(
             answer=None,
+            tool_trace=tool_trace,
             check=None,
             before=before,
             after=after,
@@ -239,6 +258,7 @@ def main():
 
     print_run_report(
         answer=answer,
+        tool_trace=tool_trace,
         check=check,
         before=before,
         after=after,
