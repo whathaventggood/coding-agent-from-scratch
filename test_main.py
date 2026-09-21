@@ -3,6 +3,7 @@ from models import ToolResult, ToolRequest
 from file_tools import (
     read_file, list_files, search_file, replace_text_once, edit_file
 )
+import subprocess
 import json
 
 
@@ -874,3 +875,50 @@ def test_handle_request_search_workspace(tmp_path):
         ),
         is_error=False,
     )
+
+
+def test_handle_request_inspects_git_changes(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    subprocess.run(
+        ["git", "init", "-q"],
+        cwd=workspace,
+        check=True,
+    )
+
+    tracked = workspace / "tracked.txt"
+    tracked.write_text("old\n", encoding="utf-8")
+
+    subprocess.run(
+        ["git", "add", "tracked.txt"],
+        cwd=workspace,
+        check=True,
+    )
+
+    tracked.write_text("new\n", encoding="utf-8")
+    (workspace / "new.txt").write_text(
+        "untracked\n",
+        encoding="utf-8",
+    )
+
+    raw = json.dumps({
+        "name": "inspect_git_changes",
+        "arguments": {
+            "path": ".",
+        },
+    })
+
+    result = handle_request(
+        raw,
+        workspace_root=str(workspace),
+    )
+
+    assert result.is_error is False
+    assert "AM tracked.txt" in result.content
+    assert "?? new.txt" in result.content
+    assert "未暂存差异" in result.content
+    assert "-old" in result.content
+    assert "+new" in result.content
+    assert "已暂存差异" in result.content
+    assert "+old" in result.content

@@ -185,6 +185,28 @@ SEARCH_WORKSPACE_TOOL = {
     },
 }
 
+INSPECT_GIT_CHANGES_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "inspect_git_changes",
+        "description": (
+            "查看受信Git工作区中的状态、未暂存差异和已暂存差异；"
+            "只读，不接受任意Git参数"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "工作区内要检查的目录",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 def create_deepseek_client() -> OpenAI:
     api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -295,12 +317,14 @@ def read_file_and_answer(
             SEARCH_FILE_TOOL,
             SEARCH_WORKSPACE_TOOL,
             RUN_TESTS_TOOL,
+            INSPECT_GIT_CHANGES_TOOL,
         ])
         allowed_tool_names.update({
             "list_files",
             "search_file",
             "run_tests",
             "search_workspace",
+            "inspect_git_changes",
         })
 
         if allow_edit:

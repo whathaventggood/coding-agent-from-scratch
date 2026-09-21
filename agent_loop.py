@@ -77,6 +77,9 @@ def summarize_tool_result(
     if tool_name == "create_directory":
         return "目录创建完成"
 
+    if tool_name == "inspect_git_changes":
+        return "Git 变化检查完成"
+
     return shorten_text(result.content)
 
 

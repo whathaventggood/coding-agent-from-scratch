@@ -21,7 +21,7 @@ def run_tests(cwd: str, workspace_root: str) -> ToolResult:
         # 每次运行使用新缓存目录，避免快速编辑后读到旧的 .pyc。
         with TemporaryDirectory(prefix="agent-pycache-") as cache_dir:
             result = subprocess.run(
-                [sys.executable, "-m", "pytest", "-q"],
+                [sys.executable, "-m", "pytest", "-q"],  # pytest自动检查你的程序是不是符合预期,通过运行提前写的一些测试代码
                 cwd=directory,
                 timeout=30,
                 capture_output=True,
@@ -43,3 +43,94 @@ def run_tests(cwd: str, workspace_root: str) -> ToolResult:
         content += "\n[输出已截断]"
 
     return ToolResult(content, is_error=result.returncode != 0)
+
+
+def inspect_git_changes(
+        cwd: str,
+        workspace_root: str,
+) -> ToolResult:
+    root = Path(workspace_root).resolve()
+    directory = Path(cwd)
+
+    if not directory.is_absolute():
+        directory = root / directory
+
+    directory = directory.resolve()
+
+    if not directory.is_relative_to(root):
+        return ToolResult(
+            content="工作目录超出允许范围",
+            is_error=True,
+        )
+
+    commands = {
+        "Git状态": [
+            "git",
+            "status",
+            "--short",
+            "--untracked-files=all",
+            "--",
+            ".",
+        ],
+        "未暂存差异": [
+            "git",
+            "diff",
+            "--",
+            ".",
+        ],
+        "已暂存差异": [
+            "git",
+            "diff",
+            "--cached",
+            "--",
+            ".",
+        ],
+    }
+
+    sections = []
+
+    try:
+        for label, command in commands.items():
+            result = subprocess.run(
+                command,
+                cwd=directory,
+                timeout=10,
+                capture_output=True,
+                text=True,
+                shell=False,
+            )
+
+            if result.returncode != 0:
+                message = result.stderr.strip() or result.stdout.strip()
+                return ToolResult(
+                    content=f"无法读取{label}：{message}",
+                    is_error=True,
+                )
+
+            output = result.stdout.strip() or "无"
+            sections.append(f"{label}：\n{output}")
+    except subprocess.TimeoutExpired:
+        return ToolResult(
+            content="Git 检查超时",
+            is_error=True,
+        )
+    except FileNotFoundError:
+        return ToolResult(
+            content="未找到 Git",
+            is_error=True,
+        )
+
+    content = "\n\n".join(sections)
+
+    if len(content) > 12000:
+        omitted_count = len(content) - 12000
+        content = (
+                content[:12000]
+                + "\n"
+                + f"[Git 检查结果已截断，省略 {omitted_count} 个字符]"
+        )
+
+    return ToolResult(
+        content=content,
+        is_error=False,
+    )
