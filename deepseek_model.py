@@ -114,6 +114,29 @@ LIST_FILES_TOOL = {
     },
 }
 
+CREATE_FILE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "create_file",
+        "description": "在受信工作区内创建一个不存在的UTF-8文本文件，不允许覆盖已有文件",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "要创建的文件路径",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "要写入文件的完整文本内容",
+                },
+            },
+            "required": ["path", "content"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 def create_deepseek_client() -> OpenAI:
     api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -231,8 +254,14 @@ def read_file_and_answer(
         })
 
         if allow_edit:
-            available_tools.append(EDIT_FILE_TOOL)
-            allowed_tool_names.add("edit_file")
+            available_tools.extend([
+                EDIT_FILE_TOOL,
+                CREATE_FILE_TOOL,
+            ])
+            allowed_tool_names.update({
+                "edit_file",
+                "create_file",
+            })
 
     def model(messages):
         response = request_chat_completion(

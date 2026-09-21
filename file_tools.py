@@ -175,3 +175,39 @@ def edit_file(
     )
 
     return replace_result
+
+
+def create_file(path: str, content: str) -> ToolResult:
+    if not path:
+        return ToolResult(
+            content="路径不能为空",
+            is_error=True,
+        )
+
+    file_path = Path(path)
+
+    if not file_path.parent.is_dir():
+        return ToolResult(
+            content="父目录不存在",
+            is_error=True,
+        )
+
+    try:
+        # 使用 x 模式：只有文件不存在时才能创建，避免覆盖已有内容。
+        with file_path.open("x", encoding="utf-8") as file:
+            file.write(content)
+    except FileExistsError:
+        return ToolResult(
+            content="文件已存在，拒绝覆盖",
+            is_error=True,
+        )
+    except OSError as error:
+        return ToolResult(
+            content=f"创建文件失败：{error}",
+            is_error=True,
+        )
+
+    return ToolResult(
+        content="文件创建成功",
+        is_error=False,
+    )

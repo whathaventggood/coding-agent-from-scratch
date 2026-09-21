@@ -1,6 +1,14 @@
 import json
 from models import ToolRequest, ToolResult
-from file_tools import read_file, list_files, search_file, edit_file
+
+from file_tools import (
+    read_file,
+    list_files,
+    search_file,
+    edit_file,
+    create_file,
+)
+
 from command_tool import run_tests
 from pathlib import Path
 
@@ -30,8 +38,15 @@ def dispatch(
         workspace_root: str | None = None,
         start_line: int | None = None,
         max_lines: int | None = None,
+        content: str | None = None,
 ) -> ToolResult:
-    file_tools = {"read_file", "list_files", "search_file", "edit_file"}
+    file_tools = {
+        "read_file",
+        "list_files",
+        "search_file",
+        "edit_file",
+        "create_file",
+    }
 
     if workspace_root is not None and tool_name in file_tools and path:
         resolve_path = resolve_workspace_path(path, workspace_root)
@@ -75,6 +90,15 @@ def dispatch(
             )
         return edit_file(path, old_text, new_text)
 
+    elif tool_name == "create_file":
+        if content is None:
+            return ToolResult(
+                content="缺少content",
+                is_error=True,
+            )
+
+        return create_file(path, content)
+
     elif tool_name == "run_tests":
         if workspace_root is None:
             return ToolResult(
@@ -115,6 +139,17 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
 
     if not isinstance(arguments, dict):
         return {"error": "arguments必须是JSON对象"}
+
+    content = None
+
+    if name == "create_file":
+        content = arguments.get("content")
+
+        if content is None:
+            return {"error": "缺少content"}
+
+        if not isinstance(content, str):
+            return {"error": "content必须是字符串"}
 
     path = arguments.get("path")
     if path is None:
@@ -190,6 +225,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
         new_text=new_text,
         start_line=start_line,
         max_lines=max_lines,
+        content=content,
     )
 
 
@@ -215,4 +251,5 @@ def handle_request(
         workspace_root=workspace_root,
         start_line=result.start_line,
         max_lines=result.max_lines,
+        content=result.content,
     )

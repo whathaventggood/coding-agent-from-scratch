@@ -756,3 +756,40 @@ def test_handle_request_read_file_range(tmp_path):
         ),
         is_error=False,
     )
+
+
+def test_handle_request_create_file_and_reject_overwrite(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    raw = json.dumps({
+        "name": "create_file",
+        "arguments": {
+            "path": "new_module.py",
+            "content": "VALUE = 92741\n",
+        },
+    })
+
+    first_result = handle_request(
+        raw,
+        workspace_root=str(workspace),
+    )
+
+    created_file = workspace / "new_module.py"
+
+    assert first_result == ToolResult(
+        content="文件创建成功",
+        is_error=False,
+    )
+    assert created_file.read_text(encoding="utf-8") == "VALUE = 92741\n"
+
+    second_result = handle_request(
+        raw,
+        workspace_root=str(workspace),
+    )
+
+    assert second_result == ToolResult(
+        content="文件已存在，拒绝覆盖",
+        is_error=True,
+    )
+    assert created_file.read_text(encoding="utf-8") == "VALUE = 92741\n"

@@ -246,7 +246,12 @@ def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
         if client.chat.completions.create.call_count == 1:
             names = {tool["function"]["name"] for tool in kwargs["tools"]}
             assert names == {
-                "list_files", "read_file", "search_file", "run_tests", "edit_file"
+                "list_files",
+                "read_file",
+                "search_file",
+                "run_tests",
+                "edit_file",
+                "create_file",
             }
             return Mock(choices=[
                 Mock(message=request_message, finish_reason="tool_calls")

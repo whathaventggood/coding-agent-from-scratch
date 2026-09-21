@@ -71,6 +71,9 @@ def summarize_tool_result(
     if tool_name == "edit_file":
         return "文件编辑完成"
 
+    if tool_name == "create_file":
+        return "文件创建完成"
+
     return shorten_text(result.content)
 
 
