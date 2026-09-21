@@ -137,6 +137,28 @@ CREATE_FILE_TOOL = {
     },
 }
 
+CREATE_DIRECTORY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "create_directory",
+        "description": (
+            "在受信工作区内创建一个不存在的目录；"
+            "父目录必须已经存在，不会递归创建多层目录"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "要创建的目录路径",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 def create_deepseek_client() -> OpenAI:
     api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -257,10 +279,12 @@ def read_file_and_answer(
             available_tools.extend([
                 EDIT_FILE_TOOL,
                 CREATE_FILE_TOOL,
+                CREATE_DIRECTORY_TOOL,
             ])
             allowed_tool_names.update({
                 "edit_file",
                 "create_file",
+                "create_directory",
             })
 
     def model(messages):

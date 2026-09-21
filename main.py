@@ -7,6 +7,7 @@ from file_tools import (
     search_file,
     edit_file,
     create_file,
+    create_directory,
 )
 
 from command_tool import run_tests
@@ -46,6 +47,7 @@ def dispatch(
         "search_file",
         "edit_file",
         "create_file",
+        "create_directory",
     }
 
     if workspace_root is not None and tool_name in file_tools and path:
@@ -89,6 +91,9 @@ def dispatch(
                 is_error=True,
             )
         return edit_file(path, old_text, new_text)
+
+    elif tool_name == "create_directory":
+        return create_directory(path)
 
     elif tool_name == "create_file":
         if content is None:

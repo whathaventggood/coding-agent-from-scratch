@@ -793,3 +793,39 @@ def test_handle_request_create_file_and_reject_overwrite(tmp_path):
         is_error=True,
     )
     assert created_file.read_text(encoding="utf-8") == "VALUE = 92741\n"
+
+
+def test_handle_request_create_directory_and_reject_existing(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    raw = json.dumps({
+        "name": "create_directory",
+        "arguments": {
+            "path": "package",
+        },
+    })
+
+    first_result = handle_request(
+        raw,
+        workspace_root=str(workspace),
+    )
+
+    directory = workspace / "package"
+
+    assert first_result == ToolResult(
+        content="目录创建成功",
+        is_error=False,
+    )
+    assert directory.is_dir()
+
+    second_result = handle_request(
+        raw,
+        workspace_root=str(workspace),
+    )
+
+    assert second_result == ToolResult(
+        content="路径已存在，拒绝重复创建",
+        is_error=True,
+    )
+    assert directory.is_dir()

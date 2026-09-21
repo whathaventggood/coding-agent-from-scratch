@@ -74,6 +74,9 @@ def summarize_tool_result(
     if tool_name == "create_file":
         return "文件创建完成"
 
+    if tool_name == "create_directory":
+        return "目录创建完成"
+
     return shorten_text(result.content)
 
 

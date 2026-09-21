@@ -211,3 +211,38 @@ def create_file(path: str, content: str) -> ToolResult:
         content="文件创建成功",
         is_error=False,
     )
+
+
+def create_directory(path: str) -> ToolResult:
+    if not path:
+        return ToolResult(
+            content="路径不能为空",
+            is_error=True,
+        )
+
+    directory = Path(path)
+
+    if not directory.parent.is_dir():
+        return ToolResult(
+            content="父目录不存在",
+            is_error=True,
+        )
+
+    try:
+        # 不使用 parents=True，不自动创建模型没有明确请求的上级目录。
+        directory.mkdir()
+    except FileExistsError:
+        return ToolResult(
+            content="路径已存在，拒绝重复创建",
+            is_error=True,
+        )
+    except OSError as error:
+        return ToolResult(
+            content=f"创建目录失败：{error}",
+            is_error=True,
+        )
+
+    return ToolResult(
+        content="目录创建成功",
+        is_error=False,
+    )

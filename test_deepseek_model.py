@@ -195,7 +195,12 @@ def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
                 tool["function"]["name"]
                 for tool in kwargs["tools"]
             }
-            assert names == {"list_files", "read_file", "search_file", "run_tests"}
+            assert names == {
+                "list_files",
+                "read_file",
+                "search_file",
+                "run_tests",
+            }
             return first_response
 
         tool_message = kwargs["messages"][-1]
@@ -252,6 +257,7 @@ def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
                 "run_tests",
                 "edit_file",
                 "create_file",
+                "create_directory",
             }
             return Mock(choices=[
                 Mock(message=request_message, finish_reason="tool_calls")
