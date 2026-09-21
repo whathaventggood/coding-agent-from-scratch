@@ -1,4 +1,6 @@
 import json
+import pytest
+
 from unittest.mock import Mock
 
 import deepseek_model
@@ -156,12 +158,14 @@ def test_read_loop_stops_at_max_steps(tmp_path, monkeypatch):
         lambda: client,
     )
 
-    answer = deepseek_model.read_file_and_answer(
-        "不断读取文件",
-        max_steps=3,
-    )
-
-    assert answer == "达到最大步骤数"
+    with pytest.raises(
+            RuntimeError,
+            match="达到最大步骤数",
+    ):
+        deepseek_model.read_file_and_answer(
+            "不断读取文件",
+            max_steps=3,
+        )
     assert client.chat.completions.create.call_count == 3
 
 

@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from agent_loop import execute_tool_call, run_agent
 from models import ToolResult
@@ -118,13 +119,15 @@ def test_run_agent_stops_at_max_steps(tmp_path):
             },
         }
 
-    answer = run_agent(
-        fake_model,
-        "请一直读取文件",
-        max_steps=3,
-    )
-
-    assert answer == "达到最大步骤数"
+    with pytest.raises(
+            RuntimeError,
+            match="达到最大步骤数",
+    ):
+        run_agent(
+            fake_model,
+            "请一直读取文件",
+            max_steps=3,
+        )
     assert seen_message_counts == [1, 2, 3]
 
 

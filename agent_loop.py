@@ -122,7 +122,7 @@ def run_agent(
             return response["content"]
 
         if response_type == "incomplete":
-            return "模型响应未正常完成"
+            raise RuntimeError("模型响应未正常完成")
 
         if response_type == "tool_call":
             name = response["name"]
@@ -138,7 +138,7 @@ def run_agent(
                     name,
                     result,
                 )
-                return result.content
+                raise RuntimeError(result.content)
 
             result = execute_tool_call(response, workspace_root)
             append_tool_trace(
@@ -174,7 +174,7 @@ def run_agent(
                         name,
                         result,
                     )
-                    return result.content
+                    raise RuntimeError(result.content)
 
                 try:
                     arguments = json.loads(call["arguments"])
@@ -214,6 +214,6 @@ def run_agent(
                 })
             continue
 
-        return "未知模型响应类型"
+        raise RuntimeError("未知模型响应类型")
 
-    return "达到最大步骤数"
+    raise RuntimeError("达到最大步骤数")
