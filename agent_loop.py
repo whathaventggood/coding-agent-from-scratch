@@ -4,6 +4,7 @@ from main import handle_request
 from models import ToolResult, ToolTraceEntry
 
 MAX_TOOL_RESULT_CHARS = 4000
+MAX_TOTAL_TOOL_RESULT_CHARS = 12000
 
 
 def execute_tool_call(
@@ -36,6 +37,32 @@ def limit_tool_result_for_model(
         content=limited_content,
         is_error=result.is_error,
     )
+
+
+def limit_tool_result_with_budget(
+        result: ToolResult,
+        remaining_chars: int,
+) -> tuple[ToolResult, int]:
+    if remaining_chars <= 0:
+        raise RuntimeError(
+            "工具结果累计超过上下文预算，请缩小读取或搜索范围"
+        )
+
+    result_limit = min(
+        MAX_TOOL_RESULT_CHARS,
+        remaining_chars,
+    )
+
+    model_result = limit_tool_result_for_model(
+        result,
+        limit=result_limit,
+    )
+    included_chars = min(
+        len(result.content),
+        result_limit,
+    )
+
+    return model_result, included_chars
 
 
 def shorten_text(text: str, limit: int = 160) -> str:
@@ -109,6 +136,7 @@ def run_agent(
         workspace_root: str | None = None,
         allowed_tool_names: set[str] | None = None,
         tool_trace: list[ToolTraceEntry] | None = None,
+        max_total_tool_result_chars: int = MAX_TOTAL_TOOL_RESULT_CHARS,
 ) -> str:
     messages = [
         {
@@ -116,6 +144,7 @@ def run_agent(
             "content": user_message,
         }
     ]
+    tool_result_chars_sent = 0
 
     for model_step in range(1, max_steps + 1):
         response = model(messages)
@@ -128,6 +157,15 @@ def run_agent(
             raise RuntimeError("模型响应未正常完成")
 
         if response_type == "tool_call":
+            remaining_chars = (
+                    max_total_tool_result_chars
+                    - tool_result_chars_sent
+            )
+
+            if remaining_chars <= 0:
+                raise RuntimeError(
+                    "工具结果累计超过上下文预算，请缩小读取或搜索范围"
+                )
             name = response["name"]
 
             if allowed_tool_names is not None and name not in allowed_tool_names:
@@ -151,7 +189,11 @@ def run_agent(
                 result,
             )
 
-            model_result = limit_tool_result_for_model(result)
+            model_result, included_chars = limit_tool_result_with_budget(
+                result,
+                remaining_chars,
+            )
+            tool_result_chars_sent += included_chars
 
             messages.append({
                 "role": "tool",
@@ -164,6 +206,15 @@ def run_agent(
             messages.append(response["assistant_message"])
 
             for call in response["calls"]:
+                remaining_chars = (
+                        max_total_tool_result_chars
+                        - tool_result_chars_sent
+                )
+
+                if remaining_chars <= 0:
+                    raise RuntimeError(
+                        "工具结果累计超过上下文预算，请缩小读取或搜索范围"
+                    )
                 name = call["name"]
 
                 if allowed_tool_names is not None and name not in allowed_tool_names:
@@ -202,7 +253,13 @@ def run_agent(
                     result,
                 )
 
-                model_result = limit_tool_result_for_model(result)
+                model_result, included_chars = (
+                    limit_tool_result_with_budget(
+                        result,
+                        remaining_chars,
+                    )
+                )
+                tool_result_chars_sent += included_chars
 
                 messages.append({
                     "role": "tool",

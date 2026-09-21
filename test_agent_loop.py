@@ -187,3 +187,100 @@ def test_run_agent_repairs_after_failed_test(tmp_path):
     assert "return a + b" in (tmp_path / "calculator.py").read_text(
         encoding="utf-8"
     )
+
+
+def test_run_agent_recomputes_budget_between_parallel_tool_calls(
+        tmp_path,
+):
+    file_path = tmp_path / "large.txt"
+    file_path.write_text(
+        "abcdefghij",
+        encoding="utf-8",
+    )
+
+    tool_trace = []
+
+    def fake_model(messages):
+        return {
+            "type": "tool_calls",
+            "assistant_message": {
+                "role": "assistant",
+                "content": None,
+            },
+            "calls": [
+                {
+                    "id": "call_1",
+                    "name": "read_file",
+                    "arguments": json.dumps({
+                        "path": str(file_path),
+                    }),
+                },
+                {
+                    "id": "call_2",
+                    "name": "read_file",
+                    "arguments": json.dumps({
+                        "path": str(file_path),
+                    }),
+                },
+                {
+                    "id": "call_3",
+                    "name": "read_file",
+                    "arguments": json.dumps({
+                        "path": str(file_path),
+                    }),
+                },
+            ],
+        }
+
+    with pytest.raises(
+            RuntimeError,
+            match="工具结果累计超过上下文预算",
+    ):
+        run_agent(
+            fake_model,
+            "同一轮读取三次文件",
+            max_steps=2,
+            tool_trace=tool_trace,
+            max_total_tool_result_chars=12,
+        )
+
+    assert len(tool_trace) == 2
+
+
+def test_run_agent_stops_before_tool_when_total_budget_is_exhausted(
+        tmp_path,
+):
+    file_path = tmp_path / "large.txt"
+    file_path.write_text(
+        "abcdefghij",
+        encoding="utf-8",
+    )
+
+    seen_message_counts = []
+    tool_trace = []
+
+    def fake_model(messages):
+        seen_message_counts.append(len(messages))
+
+        return {
+            "type": "tool_call",
+            "name": "read_file",
+            "arguments": {
+                "path": str(file_path),
+            },
+        }
+
+    with pytest.raises(
+            RuntimeError,
+            match="工具结果累计超过上下文预算",
+    ):
+        run_agent(
+            fake_model,
+            "不断读取文件",
+            max_steps=4,
+            tool_trace=tool_trace,
+            max_total_tool_result_chars=12,
+        )
+
+    assert seen_message_counts == [1, 2, 3]
+    assert len(tool_trace) == 2
