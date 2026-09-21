@@ -922,3 +922,35 @@ def test_handle_request_inspects_git_changes(tmp_path):
     assert "+new" in result.content
     assert "已暂存差异" in result.content
     assert "+old" in result.content
+
+
+def test_handle_request_runs_single_test_file(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    (workspace / "test_pass.py").write_text(
+        "def test_pass():\n"
+        "    assert 1 + 1 == 2\n",
+        encoding="utf-8",
+    )
+    (workspace / "test_fail.py").write_text(
+        "def test_fail():\n"
+        "    assert 1 + 1 == 3\n",
+        encoding="utf-8",
+    )
+
+    raw = json.dumps({
+        "name": "run_test_file",
+        "arguments": {
+            "path": "test_pass.py",
+        },
+    })
+
+    result = handle_request(
+        raw,
+        workspace_root=str(workspace),
+    )
+
+    assert result.is_error is False
+    assert "1 passed" in result.content
+    assert "failed" not in result.content

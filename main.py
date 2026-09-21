@@ -1,7 +1,11 @@
 import json
 from models import ToolRequest, ToolResult
-from command_tool import run_tests, inspect_git_changes
 from pathlib import Path
+from command_tool import (
+    run_tests,
+    run_test_file,
+    inspect_git_changes,
+)
 from file_tools import (
     read_file,
     list_files,
@@ -120,6 +124,18 @@ def dispatch(
                 is_error=True,
             )
         return run_tests(path, workspace_root)
+
+    elif tool_name == "run_test_file":
+        if workspace_root is None:
+            return ToolResult(
+                content="缺少受信工作区",
+                is_error=True,
+            )
+
+        return run_test_file(
+            path,
+            workspace_root,
+        )
 
     elif tool_name == "inspect_git_changes":
         if workspace_root is None:

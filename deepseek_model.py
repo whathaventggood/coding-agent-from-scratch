@@ -207,6 +207,28 @@ INSPECT_GIT_CHANGES_TOOL = {
     },
 }
 
+RUN_TEST_FILE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "run_test_file",
+        "description": (
+            "只运行受信工作区中的一个指定pytest测试文件；"
+            "不接受其他命令或pytest参数"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "工作区内测试文件的路径",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 def create_deepseek_client() -> OpenAI:
     api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -318,6 +340,7 @@ def read_file_and_answer(
             SEARCH_WORKSPACE_TOOL,
             RUN_TESTS_TOOL,
             INSPECT_GIT_CHANGES_TOOL,
+            RUN_TEST_FILE_TOOL,
         ])
         allowed_tool_names.update({
             "list_files",
@@ -325,6 +348,7 @@ def read_file_and_answer(
             "run_tests",
             "search_workspace",
             "inspect_git_changes",
+            "run_test_file",
         })
 
         if allow_edit:

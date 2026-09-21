@@ -134,3 +134,76 @@ def inspect_git_changes(
         content=content,
         is_error=False,
     )
+
+
+def run_test_file(
+        path: str,
+        workspace_root: str,
+) -> ToolResult:
+    root = Path(workspace_root).resolve()
+    test_file = Path(path)
+
+    if not test_file.is_absolute():
+        test_file = root / test_file
+
+    test_file = test_file.resolve()
+
+    if not test_file.is_relative_to(root):
+        return ToolResult(
+            content="测试文件超出允许范围",
+            is_error=True,
+        )
+
+    if not test_file.is_file():
+        return ToolResult(
+            content="测试路径不是已存在的文件",
+            is_error=True,
+        )
+
+    relative_path = test_file.relative_to(root)
+
+    try:
+        with TemporaryDirectory(prefix="agent-pycache-") as cache_dir:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    str(relative_path),
+                ],
+                cwd=root,
+                timeout=30,
+                capture_output=True,
+                text=True,
+                shell=False,
+                env={
+                    **os.environ,
+                    "PYTHONPYCACHEPREFIX": cache_dir,
+                },
+            )
+    except subprocess.TimeoutExpired:
+        return ToolResult(
+            content="命令执行超时",
+            is_error=True,
+        )
+    except FileNotFoundError:
+        return ToolResult(
+            content="命令启动失败",
+            is_error=True,
+        )
+
+    stdout = result.stdout[:1000]
+    stderr = result.stderr[:1000]
+    content = f"退出码: {result.returncode}\n{stdout}"
+
+    if stderr:
+        content += f"\n标准错误:\n{stderr}"
+
+    if len(result.stdout) > 1000 or len(result.stderr) > 1000:
+        content += "\n[输出已截断]"
+
+    return ToolResult(
+        content=content,
+        is_error=result.returncode != 0,
+    )
