@@ -40,7 +40,7 @@ def read_file(
         return ToolResult(content=content)
 
     actual_start = start_line if start_line is not None else 1
-    lines = content.splitlines(keepends=True)      #把完整文本拆成一个“每行一个元素(字符串)”的列表，并保留每行末尾的换行符。
+    lines = content.splitlines(keepends=True)  # 把完整文本拆成一个“每行一个元素(字符串)”的列表，并保留每行末尾的换行符。
 
     if actual_start > len(lines):
         return ToolResult(
@@ -74,23 +74,29 @@ def list_files(path: str) -> ToolResult:
             content="路径不能为空",
             is_error=True,
         )
-    folders = Path(path)
-    if not folders.is_dir():
+
+    folder = Path(path)
+
+    if not folder.is_dir():
         return ToolResult(
             content="不是目录",
             is_error=True,
         )
-    items = folders.iterdir()
-    files = []
+
+    entries = []
+    items = sorted(
+        folder.iterdir(),
+        key=lambda item: item.name,
+    )
 
     for item in items:
-        if item.is_file():
-            files.append(str(item))
-
-    files.sort()
+        if item.is_dir():
+            entries.append(f"[目录] {item}/")
+        elif item.is_file():
+            entries.append(f"[文件] {item}")
 
     return ToolResult(
-        content='\n'.join(files),
+        content="\n".join(entries),
     )
 
 

@@ -1,13 +1,13 @@
 import os
 
 from openai import (
-    APIConnectionError,    ##网络或代理连接失败
-    APIStatusError,        #服务器返回其他 HTTP 错误
-    APITimeoutError,       #请求超过等待时间
-    AuthenticationError,   #Key 无效或没有权限
+    APIConnectionError,  ##网络或代理连接失败
+    APIStatusError,  # 服务器返回其他 HTTP 错误
+    APITimeoutError,  # 请求超过等待时间
+    AuthenticationError,  # Key 无效或没有权限
     OpenAI,
-    OpenAIError,           #SDK 的其他错误
-    RateLimitError,        #请求频率或额度受到限制
+    OpenAIError,  # SDK 的其他错误
+    RateLimitError,  # 请求频率或额度受到限制
 )
 
 from agent_loop import run_agent
@@ -102,7 +102,7 @@ LIST_FILES_TOOL = {
     "type": "function",
     "function": {
         "name": "list_files",
-        "description": "列出工作区指定目录中的文件",
+        "description": "列出工作区指定目录下一层的文件和子目录，并标明类型",
         "parameters": {
             "type": "object",
             "properties": {
@@ -125,7 +125,7 @@ def create_deepseek_client() -> OpenAI:
         api_key=api_key,
         base_url="https://api.deepseek.com",
         timeout=30.0,
-        max_retries=1,     #遇到可重试错误时，SDK最多自动重试一次
+        max_retries=1,  # 遇到可重试错误时，SDK最多自动重试一次
     )
 
 

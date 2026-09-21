@@ -78,9 +78,11 @@ def test_list_files_success(tmp_path):
 
     result = list_files(str(tmp_path))
 
-    expected_content = '\n'.join(
-        sorted([str(file_a), str(file_b)])
-    )
+    expected_content = "\n".join([
+        f"[文件] {file_a}",
+        f"[文件] {file_b}",
+        f"[目录] {folder}/",
+    ])
 
     assert result == ToolResult(
         content=expected_content
@@ -208,9 +210,11 @@ def test_handle_request_list_files_success(tmp_path):
         "arguments": {"path": str(tmp_path)},
     })
 
-    expected_content = '\n'.join(
-        sorted([str(file_a), str(file_b)])
-    )
+    expected_content = "\n".join([
+        f"[文件] {file_a}",
+        f"[文件] {file_b}",
+        f"[目录] {folder}/",
+    ])
 
     result = handle_request(raw)
 
