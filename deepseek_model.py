@@ -25,7 +25,18 @@ READ_FILE_TOOL = {
                 "path": {
                     "type": "string",
                     "description": "需要读取的文件路径",
-                }
+                },
+                "start_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "可选，从第几行开始读取，行号从1开始",
+                },
+                "max_lines": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200,
+                    "description": "可选，本次最多读取多少行",
+                },
             },
             "required": ["path"],
             "additionalProperties": False,

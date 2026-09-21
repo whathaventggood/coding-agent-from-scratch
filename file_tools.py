@@ -1,14 +1,21 @@
 from pathlib import Path
 from models import ToolResult
 
-#读工具
-def read_file(path:str)->ToolResult:
+
+# 读工具
+def read_file(
+        path: str,
+        start_line: int | None = None,
+        max_lines: int | None = None,
+) -> ToolResult:
     if not path:
         return ToolResult(
             content="路径不能为空",
             is_error=True,
         )
-    file_path=Path(path)
+
+    file_path = Path(path)
+
     if file_path.is_dir():
         return ToolResult(
             content="路径是目录",
@@ -16,7 +23,7 @@ def read_file(path:str)->ToolResult:
         )
 
     try:
-        content=file_path.read_text(encoding="utf-8")
+        content = file_path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return ToolResult(
             content="文件不存在",
@@ -28,13 +35,40 @@ def read_file(path:str)->ToolResult:
             is_error=True,
         )
 
+    # 没有提供分段参数时，保持原来的整文件读取行为。
+    if start_line is None and max_lines is None:
+        return ToolResult(content=content)
+
+    actual_start = start_line if start_line is not None else 1
+    lines = content.splitlines(keepends=True)      #把完整文本拆成一个“每行一个元素(字符串)”的列表，并保留每行末尾的换行符。
+
+    if actual_start > len(lines):
+        return ToolResult(
+            content=f"起始行超出文件范围，文件共 {len(lines)} 行",
+            is_error=True,
+        )
+
+    if max_lines is None:
+        actual_end = len(lines)
+    else:
+        actual_end = min(
+            actual_start + max_lines - 1,
+            len(lines),
+        )
+
+    selected_content = "".join(lines[actual_start - 1:actual_end])
+
     return ToolResult(
-        content=content,
+        content=(
+            f"[读取第 {actual_start}-{actual_end} 行，"
+            f"共 {len(lines)} 行]\n"
+            f"{selected_content}"
+        ),
     )
 
 
-#列出目录下文件名
-def list_files(path:str)->ToolResult:
+# 列出目录下文件名
+def list_files(path: str) -> ToolResult:
     if not path:
         return ToolResult(
             content="路径不能为空",
@@ -42,16 +76,16 @@ def list_files(path:str)->ToolResult:
         )
     folders = Path(path)
     if not folders.is_dir():
-        return  ToolResult(
+        return ToolResult(
             content="不是目录",
             is_error=True,
         )
-    items=folders.iterdir()
-    files=[]
+    items = folders.iterdir()
+    files = []
 
     for item in items:
         if item.is_file():
-           files.append(str(item))
+            files.append(str(item))
 
     files.sort()
 
@@ -60,16 +94,16 @@ def list_files(path:str)->ToolResult:
     )
 
 
-#关键词搜索
-def search_file(path:str,keyword:str)->ToolResult:
-    read_result=read_file(path)
+# 关键词搜索
+def search_file(path: str, keyword: str) -> ToolResult:
+    read_result = read_file(path)
 
     if read_result.is_error:
         return read_result
 
-    matches=[]
+    matches = []
 
-    for line_number,line in enumerate(read_result.content.splitlines(),start=1):
+    for line_number, line in enumerate(read_result.content.splitlines(), start=1):
         if keyword in line:
             matches.append(f"{line_number}: {line}")
 
@@ -79,9 +113,9 @@ def search_file(path:str,keyword:str)->ToolResult:
 
 
 def replace_text_once(
-    text: str,
-    old_text: str,
-    new_text: str,
+        text: str,
+        old_text: str,
+        new_text: str,
 ) -> ToolResult:
     match_count = text.count(old_text)
 
@@ -110,9 +144,9 @@ def replace_text_once(
 
 
 def edit_file(
-    path: str,
-    old_text: str,
-    new_text: str,
+        path: str,
+        old_text: str,
+        new_text: str,
 ) -> ToolResult:
     read_result = read_file(path)
 

@@ -19,6 +19,7 @@ def resolve_workspace_path(path: str, workspace_root: str) -> str | None:
 
     return str(target)
 
+
 # 选择工具执行
 def dispatch(
         tool_name: str,
@@ -27,6 +28,8 @@ def dispatch(
         old_text: str | None = None,
         new_text: str | None = None,
         workspace_root: str | None = None,
+        start_line: int | None = None,
+        max_lines: int | None = None,
 ) -> ToolResult:
     file_tools = {"read_file", "list_files", "search_file", "edit_file"}
 
@@ -35,14 +38,18 @@ def dispatch(
 
         if resolve_path is None:
             return ToolResult(
-                content = "路径超出工作区",
+                content="路径超出工作区",
                 is_error=True,
             )
 
         path = resolve_path
 
     if tool_name == "read_file":
-        return read_file(path)
+        return read_file(
+            path,
+            start_line=start_line,
+            max_lines=max_lines,
+        )
 
     elif tool_name == "list_files":
         return list_files(path)
@@ -116,6 +123,30 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
     if not isinstance(path, str):
         return {"error": "path必须是字符串"}
 
+    start_line = None
+    max_lines = None
+
+    if name == "read_file":
+        start_line = arguments.get("start_line")
+        max_lines = arguments.get("max_lines")
+
+        if start_line is not None:
+            if type(start_line) is not int:
+                return {"error": "start_line必须是整数"}
+
+            if start_line < 1:
+                return {"error": "start_line必须大于0"}
+
+        if max_lines is not None:
+            if type(max_lines) is not int:
+                return {"error": "max_lines必须是整数"}
+
+            if max_lines < 1:
+                return {"error": "max_lines必须大于0"}
+
+            if max_lines > 200:
+                return {"error": "max_lines不能超过200"}
+
     keyword = None
     if name == "search_file":
         keyword = arguments.get("keyword")
@@ -157,6 +188,8 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
         keyword=keyword,
         old_text=old_text,
         new_text=new_text,
+        start_line=start_line,
+        max_lines=max_lines,
     )
 
 
@@ -174,10 +207,12 @@ def handle_request(
         )
 
     return dispatch(
-        result.name,
-        result.path,
-        result.keyword,
-        result.old_text,
-        result.new_text,
-        workspace_root,
+        tool_name=result.name,
+        path=result.path,
+        keyword=result.keyword,
+        old_text=result.old_text,
+        new_text=result.new_text,
+        workspace_root=workspace_root,
+        start_line=result.start_line,
+        max_lines=result.max_lines,
     )

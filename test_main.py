@@ -725,3 +725,30 @@ def test_file_tools_stay_in_workspace(tmp_path):
         workspace_root=str(workspace),
     ) == ToolResult(content="路径超出工作区", is_error=True)
     assert outside.read_text(encoding="utf-8") == "secret"
+
+
+def test_handle_request_read_file_range(tmp_path):
+    file_path = tmp_path / "large.txt"
+    file_path.write_text(
+        "第一行\n第二行\n第三行\n第四行\n",
+        encoding="utf-8",
+    )
+
+    raw = json.dumps({
+        "name": "read_file",
+        "arguments": {
+            "path": str(file_path),
+            "start_line": 2,
+            "max_lines": 2,
+        },
+    })
+
+    result = handle_request(raw)
+
+    assert result == ToolResult(
+        content=(
+            "[读取第 2-3 行，共 4 行]\n"
+            "第二行\n第三行\n"
+        ),
+        is_error=False,
+    )
