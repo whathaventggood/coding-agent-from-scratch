@@ -64,7 +64,7 @@ def summarize_tool_result(
         item_count = len(result.content.splitlines())
         return f"列出 {item_count} 项"
 
-    if tool_name == "search_file":
+    if tool_name in {"search_file", "search_workspace"}:
         line_count = len(result.content.splitlines())
         return f"搜索完成，返回 {line_count} 行结果"
 

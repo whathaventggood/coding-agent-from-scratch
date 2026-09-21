@@ -1,5 +1,6 @@
 from pathlib import Path
 from models import ToolResult
+import os
 
 
 # 读工具
@@ -115,6 +116,90 @@ def search_file(path: str, keyword: str) -> ToolResult:
 
     return ToolResult(
         content='\n'.join(matches),
+    )
+
+
+IGNORED_SEARCH_DIRECTORIES = {
+    ".git",
+    ".venv",
+    "__pycache__",
+}
+
+MAX_WORKSPACE_SEARCH_RESULTS = 100
+
+
+def search_workspace(path: str, keyword: str) -> ToolResult:
+    if not path:
+        return ToolResult(
+            content="路径不能为空",
+            is_error=True,
+        )
+
+    if not keyword:
+        return ToolResult(
+            content="关键词不能为空",
+            is_error=True,
+        )
+
+    root = Path(path)
+
+    if not root.is_dir():
+        return ToolResult(
+            content="不是目录",
+            is_error=True,
+        )
+
+    matches = []
+
+    for current_root, directory_names, file_names in os.walk(
+            root,
+            followlinks=False,
+    ):
+        current_directory = Path(current_root)
+
+        directory_names[:] = sorted(
+            name
+            for name in directory_names
+            if (
+                    name not in IGNORED_SEARCH_DIRECTORIES
+                    and not (current_directory / name).is_symlink()
+            )
+        )
+
+        for file_name in sorted(file_names):
+            file_path = current_directory / file_name
+
+            if file_path.is_symlink():
+                continue
+
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+
+            relative_path = file_path.relative_to(root)
+
+            for line_number, line in enumerate(
+                    content.splitlines(),
+                    start=1,
+            ):
+                if keyword not in line:
+                    continue
+
+                matches.append(
+                    f"{relative_path}:{line_number}: {line}"
+                )
+
+                if len(matches) >= MAX_WORKSPACE_SEARCH_RESULTS:
+                    matches.append(
+                        "[搜索结果已达 100 条上限]"
+                    )
+                    return ToolResult(
+                        content="\n".join(matches),
+                    )
+
+    return ToolResult(
+        content="\n".join(matches),
     )
 
 

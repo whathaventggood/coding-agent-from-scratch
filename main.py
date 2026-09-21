@@ -8,6 +8,7 @@ from file_tools import (
     edit_file,
     create_file,
     create_directory,
+    search_workspace,
 )
 
 from command_tool import run_tests
@@ -48,6 +49,7 @@ def dispatch(
         "edit_file",
         "create_file",
         "create_directory",
+        "search_workspace",
     }
 
     if workspace_root is not None and tool_name in file_tools and path:
@@ -78,6 +80,15 @@ def dispatch(
                 is_error=True,
             )
         return search_file(path, keyword)
+
+    elif tool_name == "search_workspace":
+        if keyword is None:
+            return ToolResult(
+                content="缺少keyword",
+                is_error=True,
+            )
+
+        return search_workspace(path, keyword)
 
     elif tool_name == "edit_file":
         if old_text is None:
@@ -188,7 +199,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
                 return {"error": "max_lines不能超过200"}
 
     keyword = None
-    if name == "search_file":
+    if name in {"search_file", "search_workspace"}:
         keyword = arguments.get("keyword")
 
         if keyword is None:

@@ -159,6 +159,32 @@ CREATE_DIRECTORY_TOOL = {
     },
 }
 
+SEARCH_WORKSPACE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_workspace",
+        "description": (
+            "递归搜索工作区指定目录中的UTF-8文本文件，"
+            "返回相对路径、行号和匹配行，最多返回100条"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "工作区内要搜索的目录",
+                },
+                "keyword": {
+                    "type": "string",
+                    "description": "区分大小写的搜索关键词",
+                },
+            },
+            "required": ["path", "keyword"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 def create_deepseek_client() -> OpenAI:
     api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -267,12 +293,14 @@ def read_file_and_answer(
         available_tools.extend([
             LIST_FILES_TOOL,
             SEARCH_FILE_TOOL,
+            SEARCH_WORKSPACE_TOOL,
             RUN_TESTS_TOOL,
         ])
         allowed_tool_names.update({
             "list_files",
             "search_file",
             "run_tests",
+            "search_workspace",
         })
 
         if allow_edit:

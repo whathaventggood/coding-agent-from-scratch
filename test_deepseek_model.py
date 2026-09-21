@@ -199,6 +199,7 @@ def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
                 "list_files",
                 "read_file",
                 "search_file",
+                "search_workspace",
                 "run_tests",
             }
             return first_response
@@ -254,6 +255,7 @@ def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
                 "list_files",
                 "read_file",
                 "search_file",
+                "search_workspace",
                 "run_tests",
                 "edit_file",
                 "create_file",

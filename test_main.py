@@ -829,3 +829,48 @@ def test_handle_request_create_directory_and_reject_existing(tmp_path):
         is_error=True,
     )
     assert directory.is_dir()
+
+
+def test_handle_request_search_workspace(tmp_path):
+    workspace = tmp_path / "workspace"
+    source = workspace / "src"
+    nested = source / "nested"
+    ignored = workspace / ".git"
+
+    nested.mkdir(parents=True)
+    ignored.mkdir()
+
+    (source / "a.py").write_text(
+        "first line\nTARGET_WORKSPACE_SEARCH\n",
+        encoding="utf-8",
+    )
+    (nested / "b.py").write_text(
+        "value = 'TARGET_WORKSPACE_SEARCH'\n",
+        encoding="utf-8",
+    )
+    (ignored / "hidden.txt").write_text(
+        "TARGET_WORKSPACE_SEARCH\n",
+        encoding="utf-8",
+    )
+    (source / "binary.bin").write_bytes(b"\xff")
+
+    raw = json.dumps({
+        "name": "search_workspace",
+        "arguments": {
+            "path": ".",
+            "keyword": "TARGET_WORKSPACE_SEARCH",
+        },
+    })
+
+    result = handle_request(
+        raw,
+        workspace_root=str(workspace),
+    )
+
+    assert result == ToolResult(
+        content=(
+            "src/a.py:2: TARGET_WORKSPACE_SEARCH\n"
+            "src/nested/b.py:1: value = 'TARGET_WORKSPACE_SEARCH'"
+        ),
+        is_error=False,
+    )
