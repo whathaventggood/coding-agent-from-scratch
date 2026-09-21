@@ -17,6 +17,7 @@ class ToolRequest:
     start_line: int | None = None
     max_lines: int | None = None
     content: str | None = None
+    destination: str | None = None
 
 
 # 记录 Agent 每一次工具调用的信息

@@ -104,6 +104,9 @@ def summarize_tool_result(
     if tool_name == "create_directory":
         return "目录创建完成"
 
+    if tool_name == "rename_file":
+        return "文件重命名完成"
+
     if tool_name == "inspect_git_changes":
         return "Git 变化检查完成"
 

@@ -954,3 +954,66 @@ def test_handle_request_runs_single_test_file(tmp_path):
     assert result.is_error is False
     assert "1 passed" in result.content
     assert "failed" not in result.content
+
+
+def test_handle_request_renames_file_and_rejects_overwrite(tmp_path):
+    source = tmp_path / "old_name.py"
+    source.write_text(
+        "VALUE = 1\n",
+        encoding="utf-8",
+    )
+
+    rename_request = json.dumps({
+        "name": "rename_file",
+        "arguments": {
+            "path": "old_name.py",
+            "destination": "new_name.py",
+        },
+    })
+
+    result = handle_request(
+        rename_request,
+        workspace_root=str(tmp_path),
+    )
+
+    assert result == ToolResult(
+        content="文件重命名成功",
+        is_error=False,
+    )
+    assert not source.exists()
+    assert (tmp_path / "new_name.py").read_text(
+        encoding="utf-8",
+    ) == "VALUE = 1\n"
+
+    blocked_source = tmp_path / "another.py"
+    blocked_source.write_text(
+        "VALUE = 2\n",
+        encoding="utf-8",
+    )
+    existing_target = tmp_path / "existing.py"
+    existing_target.write_text(
+        "KEEP\n",
+        encoding="utf-8",
+    )
+
+    overwrite_request = json.dumps({
+        "name": "rename_file",
+        "arguments": {
+            "path": "another.py",
+            "destination": "existing.py",
+        },
+    })
+
+    blocked_result = handle_request(
+        overwrite_request,
+        workspace_root=str(tmp_path),
+    )
+
+    assert blocked_result == ToolResult(
+        content="目标路径已存在，拒绝覆盖",
+        is_error=True,
+    )
+    assert blocked_source.exists()
+    assert existing_target.read_text(
+        encoding="utf-8",
+    ) == "KEEP\n"

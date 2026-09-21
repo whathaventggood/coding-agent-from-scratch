@@ -14,6 +14,7 @@ from file_tools import (
     create_file,
     create_directory,
     search_workspace,
+    rename_file,
 )
 
 
@@ -43,6 +44,7 @@ def dispatch(
         start_line: int | None = None,
         max_lines: int | None = None,
         content: str | None = None,
+        destination: str | None = None,
 ) -> ToolResult:
     file_tools = {
         "read_file",
@@ -52,7 +54,33 @@ def dispatch(
         "create_file",
         "create_directory",
         "search_workspace",
+        "rename_file",
     }
+
+    if workspace_root is not None and tool_name == "rename_file":
+        root = Path(workspace_root).resolve()
+        source_input = Path(path)
+
+        if not source_input.is_absolute():
+            source_input = root / source_input
+
+        if source_input.is_symlink():
+            return ToolResult(
+                content="源路径不能是符号链接",
+                is_error=True,
+            )
+
+        if destination is not None:
+            destination_input = Path(destination)
+
+            if not destination_input.is_absolute():
+                destination_input = root / destination_input
+
+            if destination_input.is_symlink():
+                return ToolResult(
+                    content="目标路径已存在，拒绝覆盖",
+                    is_error=True,
+                )
 
     if workspace_root is not None and tool_name in file_tools and path:
         resolve_path = resolve_workspace_path(path, workspace_root)
@@ -64,6 +92,24 @@ def dispatch(
             )
 
         path = resolve_path
+
+    if (
+            workspace_root is not None
+            and tool_name == "rename_file"
+            and destination is not None
+    ):
+        resolved_destination = resolve_workspace_path(
+            destination,
+            workspace_root,
+        )
+
+        if resolved_destination is None:
+            return ToolResult(
+                content="目标路径超出工作区",
+                is_error=True,
+            )
+
+        destination = resolved_destination
 
     if tool_name == "read_file":
         return read_file(
@@ -149,6 +195,15 @@ def dispatch(
             workspace_root,
         )
 
+    elif tool_name == "rename_file":
+        if destination is None:
+            return ToolResult(
+                content="缺少destination",
+                is_error=True,
+            )
+
+        return rename_file(path, destination)
+
     else:
         return ToolResult(
             content="未知工具",
@@ -199,6 +254,20 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
 
     if not isinstance(path, str):
         return {"error": "path必须是字符串"}
+
+    destination = None
+
+    if name == "rename_file":
+        destination = arguments.get("destination")
+
+        if destination is None:
+            return {"error": "缺少destination"}
+
+        if not isinstance(destination, str):
+            return {"error": "destination必须是字符串"}
+
+        if destination == "":
+            return {"error": "destination不能为空"}
 
     start_line = None
     max_lines = None
@@ -268,6 +337,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
         start_line=start_line,
         max_lines=max_lines,
         content=content,
+        destination=destination,
     )
 
 
@@ -294,4 +364,5 @@ def handle_request(
         start_line=result.start_line,
         max_lines=result.max_lines,
         content=result.content,
+        destination=result.destination,
     )

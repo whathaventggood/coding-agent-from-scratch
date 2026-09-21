@@ -267,6 +267,7 @@ def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
                 "edit_file",
                 "create_file",
                 "create_directory",
+                "rename_file",
                 "inspect_git_changes",
             }
             return Mock(choices=[

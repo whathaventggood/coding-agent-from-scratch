@@ -159,6 +159,32 @@ CREATE_DIRECTORY_TOOL = {
     },
 }
 
+RENAME_FILE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "rename_file",
+        "description": (
+            "重命名或移动受信工作区内的一个普通文件；"
+            "目标不得已存在，目标父目录必须已经存在"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "源文件路径",
+                },
+                "destination": {
+                    "type": "string",
+                    "description": "目标文件路径",
+                },
+            },
+            "required": ["path", "destination"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 SEARCH_WORKSPACE_TOOL = {
     "type": "function",
     "function": {
@@ -356,11 +382,13 @@ def read_file_and_answer(
                 EDIT_FILE_TOOL,
                 CREATE_FILE_TOOL,
                 CREATE_DIRECTORY_TOOL,
+                RENAME_FILE_TOOL,
             ])
             allowed_tool_names.update({
                 "edit_file",
                 "create_file",
                 "create_directory",
+                "rename_file",
             })
 
     def model(messages):

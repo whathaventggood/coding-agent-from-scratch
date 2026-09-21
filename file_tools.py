@@ -331,3 +331,57 @@ def create_directory(path: str) -> ToolResult:
         content="目录创建成功",
         is_error=False,
     )
+
+
+def rename_file(path: str, destination: str) -> ToolResult:
+    if not path:
+        return ToolResult(
+            content="源路径不能为空",
+            is_error=True,
+        )
+
+    if not destination:
+        return ToolResult(
+            content="目标路径不能为空",
+            is_error=True,
+        )
+
+    source = Path(path)
+    target = Path(destination)
+
+    if source.is_symlink():
+        return ToolResult(
+            content="源路径不能是符号链接",
+            is_error=True,
+        )
+
+    if not source.is_file():
+        return ToolResult(
+            content="源路径不是已存在的文件",
+            is_error=True,
+        )
+
+    if target.exists() or target.is_symlink():
+        return ToolResult(
+            content="目标路径已存在，拒绝覆盖",
+            is_error=True,
+        )
+
+    if not target.parent.is_dir():
+        return ToolResult(
+            content="目标父目录不存在",
+            is_error=True,
+        )
+
+    try:
+        source.rename(target)
+    except OSError as error:
+        return ToolResult(
+            content=f"重命名文件失败：{error}",
+            is_error=True,
+        )
+
+    return ToolResult(
+        content="文件重命名成功",
+        is_error=False,
+    )
