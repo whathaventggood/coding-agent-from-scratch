@@ -3,6 +3,8 @@ import json
 from main import handle_request
 from models import ToolResult, ToolTraceEntry
 
+MAX_TOOL_RESULT_CHARS = 4000
+
 
 def execute_tool_call(
         tool_call: dict,
@@ -14,6 +16,26 @@ def execute_tool_call(
     })
 
     return handle_request(raw, workspace_root=workspace_root)
+
+
+def limit_tool_result_for_model(
+        result: ToolResult,
+        limit: int = MAX_TOOL_RESULT_CHARS,
+) -> ToolResult:
+    if len(result.content) <= limit:
+        return result
+
+    omitted_count = len(result.content) - limit
+    limited_content = (
+            result.content[:limit]
+            + "\n"
+            + f"[工具结果已截断，省略 {omitted_count} 个字符]"
+    )
+
+    return ToolResult(
+        content=limited_content,
+        is_error=result.is_error,
+    )
 
 
 def shorten_text(text: str, limit: int = 160) -> str:
@@ -120,9 +142,11 @@ def run_agent(
                 result,
             )
 
+            model_result = limit_tool_result_for_model(result)
+
             messages.append({
                 "role": "tool",
-                "content": result.content,
+                "content": model_result.content,
                 "is_error": result.is_error,
             })
             continue
@@ -169,12 +193,14 @@ def run_agent(
                     result,
                 )
 
+                model_result = limit_tool_result_for_model(result)
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call["id"],
                     "content": json.dumps(
                         {
-                            "content": result.content,
+                            "content": model_result.content,
                             "is_error": result.is_error,
                         },
                         ensure_ascii=False,
