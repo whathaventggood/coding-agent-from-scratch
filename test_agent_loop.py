@@ -199,8 +199,11 @@ def test_run_agent_recomputes_budget_between_parallel_tool_calls(
     )
 
     tool_trace = []
+    captured_messages = None
 
     def fake_model(messages):
+        nonlocal captured_messages
+        captured_messages = messages
         return {
             "type": "tool_calls",
             "assistant_message": {
@@ -246,8 +249,28 @@ def test_run_agent_recomputes_budget_between_parallel_tool_calls(
 
     assert len(tool_trace) == 2
 
+    assert captured_messages is not None
 
-def test_run_agent_stops_before_tool_when_total_budget_is_exhausted(
+    tool_messages = [
+        message
+        for message in captured_messages
+        if (
+                isinstance(message, dict)
+                and message.get("role") == "tool"
+        )
+    ]
+
+    assert len(tool_messages) == 2
+    assert [
+               message["tool_call_id"]
+               for message in tool_messages
+           ] == [
+               "call_1",
+               "call_2",
+           ]
+
+
+def test_run_agent_compresses_seen_results_and_reuses_budget(
         tmp_path,
 ):
     file_path = tmp_path / "large.txt"
@@ -256,31 +279,86 @@ def test_run_agent_stops_before_tool_when_total_budget_is_exhausted(
         encoding="utf-8",
     )
 
-    seen_message_counts = []
-    tool_trace = []
+    model_call_count = 0
 
     def fake_model(messages):
-        seen_message_counts.append(len(messages))
+        nonlocal model_call_count
+        model_call_count += 1
 
-        return {
-            "type": "tool_call",
-            "name": "read_file",
-            "arguments": {
-                "path": str(file_path),
-            },
-        }
+        if model_call_count == 1:
+            return {
+                "type": "tool_calls",
+                "assistant_message": {
+                    "role": "assistant",
+                    "content": None,
+                },
+                "calls": [{
+                    "id": "call_1",
+                    "name": "read_file",
+                    "arguments": json.dumps({
+                        "path": str(file_path),
+                    }),
+                }],
+            }
 
-    with pytest.raises(
-            RuntimeError,
-            match="工具结果累计超过上下文预算",
-    ):
-        run_agent(
-            fake_model,
-            "不断读取文件",
-            max_steps=4,
-            tool_trace=tool_trace,
-            max_total_tool_result_chars=12,
+        if model_call_count == 2:
+            first_result = json.loads(
+                messages[-1]["content"]
+            )
+
+            assert first_result == {
+                "content": "abcdefghij",
+                "is_error": False,
+            }
+
+            return {
+                "type": "tool_calls",
+                "assistant_message": {
+                    "role": "assistant",
+                    "content": None,
+                },
+                "calls": [{
+                    "id": "call_2",
+                    "name": "read_file",
+                    "arguments": json.dumps({
+                        "path": str(file_path),
+                    }),
+                }],
+            }
+
+        first_result = json.loads(
+            messages[-3]["content"]
+        )
+        second_result = json.loads(
+            messages[-1]["content"]
         )
 
-    assert seen_message_counts == [1, 2, 3]
-    assert len(tool_trace) == 2
+        assert messages[-3]["tool_call_id"] == "call_1"
+        assert first_result == {
+            "content": (
+                "[旧工具结果已压缩] "
+                "read_file：读取成功，返回 10 个字符"
+            ),
+            "is_error": False,
+        }
+
+        assert messages[-1]["tool_call_id"] == "call_2"
+        assert second_result == {
+            "content": "abcdefghij",
+            "is_error": False,
+        }
+
+        return {
+            "type": "final",
+            "content": "读取完成",
+        }
+
+    answer = run_agent(
+        fake_model,
+        "连续读取文件",
+        max_steps=3,
+        max_total_tool_result_chars=12,
+    )
+
+    assert answer == "读取完成"
+    assert model_call_count == 3
