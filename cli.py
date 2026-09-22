@@ -2,12 +2,13 @@ import argparse
 import hashlib
 import os
 import subprocess
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from command_tool import run_tests
 from deepseek_model import read_file_and_answer
-from models import ToolTraceEntry
+from models import ToolResult, ToolTraceEntry
 
 MISSING_FILE = "<missing>"
 
@@ -44,9 +45,9 @@ def capture_workspace_snapshot(workspace: Path) -> WorkspaceSnapshot:
     try:
         repository_check = subprocess.run(
             ["git", "-C", str(workspace), "rev-parse", "--is-inside-work-tree"],
-            capture_output=True,
-            text=True,
-        )
+            capture_output=True,  # 表示别直接把输出打印终端，而是存进返回对象里
+            text=True,  # 输出按字符串处理而非bytes
+        )  # 在 workspace 目录里执行一条 Git 命令，判断它是不是 Git 仓库内部
     except FileNotFoundError:
         return WorkspaceSnapshot(
             is_git_repository=False,
@@ -140,6 +141,113 @@ def find_workspace_changes(
     return changes
 
 
+def build_json_run_report(
+        task: str,
+        workspace: Path,
+        allow_edit: bool,
+        max_steps: int,
+        answer: str | None,
+        tool_trace: list[ToolTraceEntry],
+        check: ToolResult | None,
+        before: WorkspaceSnapshot | None,
+        after: WorkspaceSnapshot | None,
+        failure_reason: str | None,
+) -> dict:
+    changes = None
+    change_message = None
+
+    if before is None or after is None:
+        change_message = "未跟踪（未开启编辑模式）"
+    else:
+        changes = find_workspace_changes(before, after)
+
+        if changes is None:
+            change_message = (
+                f"无法归因：{before.message or after.message}"
+            )
+
+    return {
+        "task": task,
+        "workspace": str(workspace),
+        "allow_edit": allow_edit,
+        "max_steps": max_steps,
+        "status": (
+            "success"
+            if failure_reason is None
+            else "failure"
+        ),
+        "failure_reason": failure_reason,
+        "answer": answer,
+        "tool_trace": [
+            {
+                "model_step": entry.model_step,
+                "tool_name": entry.tool_name,
+                "is_error": entry.is_error,
+                "summary": entry.summary,
+            }
+            for entry in tool_trace
+        ],
+        "verification": (
+            None
+            if check is None
+            else {
+                "content": check.content,
+                "is_error": check.is_error,
+            }
+        ),
+        "workspace_changes": changes,
+        "workspace_change_message": change_message,
+    }
+
+
+def save_json_run_report(
+        report_path: Path | None,
+        task: str,
+        workspace: Path,
+        allow_edit: bool,
+        max_steps: int,
+        answer: str | None,
+        tool_trace: list[ToolTraceEntry],
+        check: ToolResult | None,
+        before: WorkspaceSnapshot | None,
+        after: WorkspaceSnapshot | None,
+        failure_reason: str | None,
+) -> None:
+    if report_path is None:
+        return
+
+    report = build_json_run_report(
+        task=task,
+        workspace=workspace,
+        allow_edit=allow_edit,
+        max_steps=max_steps,
+        answer=answer,
+        tool_trace=tool_trace,
+        check=check,
+        before=before,
+        after=after,
+        failure_reason=failure_reason,
+    )
+
+    try:
+        with report_path.open("x", encoding="utf-8") as file:
+            json.dump(
+                report,
+                file,
+                ensure_ascii=False,
+                indent=2,
+            )
+            file.write("\n")
+    except FileExistsError:
+        print("\nJSON 运行记录保存失败：目标文件已存在")
+        raise SystemExit(1)
+    except OSError as error:
+        print(f"\nJSON 运行记录保存失败：{error}")
+        raise SystemExit(1)
+
+    print(f"\nJSON 运行记录：{report_path}")
+
+
 def print_run_report(
         answer: str | None,
         tool_trace: list[ToolTraceEntry],
@@ -208,17 +316,34 @@ def main():
     parser.add_argument("--workspace", required=True, type=Path, help="受信工作区")
     parser.add_argument("--allow-edit", action="store_true", help="允许修改文件")
     parser.add_argument("--max-steps", type=int, default=8, help="最多请求模型的次数")
+    parser.add_argument(
+        "--report-json",
+        type=Path,
+        help="将本次运行记录保存为新的 JSON 文件",
+    )
     args = parser.parse_args()
 
-    workspace = args.workspace.expanduser().resolve()
+    workspace = args.workspace.expanduser().resolve()  # 展开路径对象中的~并且转成绝对路径
+
     if not workspace.is_dir():
-        parser.error("工作区不是已存在的目录")
+        parser.error("工作区不是已存在的目录")  # 打印 argparse 的标准错误信息,退出程序，退出码通常是 2
     if args.max_steps < 1:
         parser.error("--max-steps 必须大于 0")
 
+    report_path = None
+
+    if args.report_json is not None:
+        report_path = args.report_json.expanduser().resolve()
+
+        if report_path.exists() or report_path.is_symlink():
+            parser.error("--report-json 目标必须不存在")
+
+        if not report_path.parent.is_dir():
+            parser.error("--report-json 的父目录不存在")
+
     before = None
     if args.allow_edit:
-        before = capture_workspace_snapshot(workspace)
+        before = capture_workspace_snapshot(workspace)  # Agent 动手前先给整个有效工作区的文件内容留个案底（hash）
 
     tool_trace: list[ToolTraceEntry] = []
 
@@ -243,6 +368,21 @@ def main():
             after=after,
             failure_reason=f"模型执行失败：{error}",
         )
+
+        save_json_run_report(
+            report_path=report_path,
+            task=args.task,
+            workspace=workspace,
+            allow_edit=args.allow_edit,
+            max_steps=args.max_steps,
+            answer=None,
+            tool_trace=tool_trace,
+            check=None,
+            before=before,
+            after=after,
+            failure_reason=f"模型执行失败：{error}",
+        )
+
         raise SystemExit(1)
 
     check = None
@@ -257,6 +397,20 @@ def main():
             failure_reason = "本地独立复验未通过"
 
     print_run_report(
+        answer=answer,
+        tool_trace=tool_trace,
+        check=check,
+        before=before,
+        after=after,
+        failure_reason=failure_reason,
+    )
+
+    save_json_run_report(
+        report_path=report_path,
+        task=args.task,
+        workspace=workspace,
+        allow_edit=args.allow_edit,
+        max_steps=args.max_steps,
         answer=answer,
         tool_trace=tool_trace,
         check=check,

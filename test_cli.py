@@ -1,6 +1,6 @@
 import subprocess
 import sys
-
+import json
 import pytest
 
 import cli
@@ -98,6 +98,7 @@ def test_cli_exits_nonzero_when_independent_verification_fails(
             is_error=True,
         ),
     )
+    report_path = tmp_path / "run-report.json"
     monkeypatch.setattr(
         sys,
         "argv",
@@ -106,6 +107,8 @@ def test_cli_exits_nonzero_when_independent_verification_fails(
             "--workspace",
             str(tmp_path),
             "--allow-edit",
+            "--report-json",
+            str(report_path),
             "修复失败的测试",
         ],
     )
@@ -120,3 +123,25 @@ def test_cli_exits_nonzero_when_independent_verification_fails(
     assert "退出码: 1" in output
     assert "无法归因：工作区不是 Git 仓库" in output
     assert "失败：本地独立复验未通过" in output
+
+    report = json.loads(
+        report_path.read_text(encoding="utf-8")
+    )
+
+    assert report["task"] == "修复失败的测试"
+    assert report["workspace"] == str(tmp_path.resolve())
+    assert report["allow_edit"] is True
+    assert report["max_steps"] == 8
+    assert report["status"] == "failure"
+    assert report["failure_reason"] == "本地独立复验未通过"
+    assert report["answer"] == "已尝试修复"
+    assert report["tool_trace"] == []
+    assert report["verification"] == {
+        "content": "退出码: 1\n1 failed",
+        "is_error": True,
+    }
+    assert report["workspace_changes"] is None
+    assert (
+            report["workspace_change_message"]
+            == "无法归因：工作区不是 Git 仓库，无法记录 Git 基线"
+    )
