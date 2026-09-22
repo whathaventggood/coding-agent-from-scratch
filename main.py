@@ -15,6 +15,7 @@ from file_tools import (
     create_directory,
     search_workspace,
     rename_file,
+    delete_file,
 )
 
 
@@ -55,6 +56,7 @@ def dispatch(
         "create_directory",
         "search_workspace",
         "rename_file",
+        "delete_file",
     }
 
     if workspace_root is not None and tool_name == "rename_file":
@@ -81,6 +83,19 @@ def dispatch(
                     content="目标路径已存在，拒绝覆盖",
                     is_error=True,
                 )
+
+    if workspace_root is not None and tool_name == "delete_file":
+        root = Path(workspace_root).resolve()
+        delete_input = Path(path)
+
+        if not delete_input.is_absolute():
+            delete_input = root / delete_input
+
+        if delete_input.is_symlink():
+            return ToolResult(
+                content="不能删除符号链接",
+                is_error=True,
+            )
 
     if workspace_root is not None and tool_name in file_tools and path:
         resolve_path = resolve_workspace_path(path, workspace_root)
@@ -203,6 +218,9 @@ def dispatch(
             )
 
         return rename_file(path, destination)
+
+    elif tool_name == "delete_file":
+        return delete_file(path)
 
     else:
         return ToolResult(

@@ -255,6 +255,28 @@ RUN_TEST_FILE_TOOL = {
     },
 }
 
+DELETE_FILE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "delete_file",
+        "description": (
+            "删除受信工作区内的一个普通文件；"
+            "不允许删除目录或符号链接"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "要删除的文件路径",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 def create_deepseek_client() -> OpenAI:
     api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -383,12 +405,14 @@ def read_file_and_answer(
                 CREATE_FILE_TOOL,
                 CREATE_DIRECTORY_TOOL,
                 RENAME_FILE_TOOL,
+                DELETE_FILE_TOOL,
             ])
             allowed_tool_names.update({
                 "edit_file",
                 "create_file",
                 "create_directory",
                 "rename_file",
+                "delete_file",
             })
 
     def model(messages):

@@ -151,8 +151,10 @@ def search_workspace(path: str, keyword: str) -> ToolResult:
 
     matches = []
 
+    # 递归遍历 root 目录树，每轮获取当前目录、子目录列表和文件列表
     for current_root, directory_names, file_names in os.walk(
             root,
+            # 不递归进入符号链接指向的目录
             followlinks=False,
     ):
         current_directory = Path(current_root)
@@ -332,8 +334,11 @@ def create_directory(path: str) -> ToolResult:
         is_error=False,
     )
 
-
-def rename_file(path: str, destination: str) -> ToolResult:
+#文件移动 + 改名
+def rename_file(
+        path: str,
+        destination: str,
+) -> ToolResult:
     if not path:
         return ToolResult(
             content="源路径不能为空",
@@ -383,5 +388,46 @@ def rename_file(path: str, destination: str) -> ToolResult:
 
     return ToolResult(
         content="文件重命名成功",
+        is_error=False,
+    )
+
+
+def delete_file(path: str) -> ToolResult:
+    if not path:
+        return ToolResult(
+            content="路径不能为空",
+            is_error=True,
+        )
+
+    file_path = Path(path)
+
+    if file_path.is_symlink():
+        return ToolResult(
+            content="不能删除符号链接",
+            is_error=True,
+        )
+
+    if not file_path.exists():
+        return ToolResult(
+            content="文件不存在",
+            is_error=True,
+        )
+
+    if not file_path.is_file():
+        return ToolResult(
+            content="路径不是普通文件",
+            is_error=True,
+        )
+
+    try:
+        file_path.unlink()
+    except OSError as error:
+        return ToolResult(
+            content=f"删除文件失败：{error}",
+            is_error=True,
+        )
+
+    return ToolResult(
+        content="文件删除成功",
         is_error=False,
     )

@@ -269,6 +269,7 @@ def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
                 "create_directory",
                 "rename_file",
                 "inspect_git_changes",
+                "delete_file",
             }
             return Mock(choices=[
                 Mock(message=request_message, finish_reason="tool_calls")

@@ -26,6 +26,7 @@
 - 在工作区内递归搜索文本关键词，跳过常见环境目录、符号链接和非 UTF-8 文件，并限制结果数量
 - 只读检查 Git 状态、未暂存差异和已暂存差异，帮助模型在结束前审阅实际改动
 - 支持模型只运行指定 pytest 测试文件以加快迭代，CLI 收尾仍执行完整测试复验
+- 在显式开启编辑权限后删除工作区内的普通文件，拒绝删除目录或符号链接
 
 ## 安装依赖
 
@@ -89,8 +90,9 @@ Agent Loop 达到最大模型请求次数、收到不完整响应、遇到未知
 python deepseek_model.py
 ```
 
-默认只开放 `read_file`；本地调用方指定受信工作区后，会额外开放目录探索、搜索、测试和 Git 检查等只读工具。`edit_file`、`create_file`、`create_directory` 和
-`rename_file` 还需要调用方显式传入 `allow_edit=True`。
+默认只开放 `read_file`；本地调用方指定受信工作区后，会额外开放目录探索、搜索、测试和 Git 检查等只读工具。`edit_file`、
+`create_file`、`create_directory`、`rename_file` 和 `delete_file`
+还需要调用方显式传入 `allow_edit=True`。
 
 ## 运行受控测试演示
 

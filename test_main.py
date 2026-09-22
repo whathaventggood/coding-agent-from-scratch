@@ -1017,3 +1017,74 @@ def test_handle_request_renames_file_and_rejects_overwrite(tmp_path):
     assert existing_target.read_text(
         encoding="utf-8",
     ) == "KEEP\n"
+
+
+def test_handle_request_deletes_regular_file_and_rejects_unsafe_paths(
+        tmp_path,
+):
+    target = tmp_path / "obsolete.py"
+    target.write_text(
+        "VALUE = 1\n",
+        encoding="utf-8",
+    )
+
+    link = tmp_path / "shortcut.py"
+    link.symlink_to(target)
+
+    link_request = json.dumps({
+        "name": "delete_file",
+        "arguments": {
+            "path": "shortcut.py",
+        },
+    })
+
+    link_result = handle_request(
+        link_request,
+        workspace_root=str(tmp_path),
+    )
+
+    assert link_result == ToolResult(
+        content="不能删除符号链接",
+        is_error=True,
+    )
+    assert link.is_symlink()
+    assert target.exists()
+
+    directory = tmp_path / "package"
+    directory.mkdir()
+
+    directory_request = json.dumps({
+        "name": "delete_file",
+        "arguments": {
+            "path": "package",
+        },
+    })
+
+    directory_result = handle_request(
+        directory_request,
+        workspace_root=str(tmp_path),
+    )
+
+    assert directory_result == ToolResult(
+        content="路径不是普通文件",
+        is_error=True,
+    )
+    assert directory.is_dir()
+
+    delete_request = json.dumps({
+        "name": "delete_file",
+        "arguments": {
+            "path": "obsolete.py",
+        },
+    })
+
+    delete_result = handle_request(
+        delete_request,
+        workspace_root=str(tmp_path),
+    )
+
+    assert delete_result == ToolResult(
+        content="文件删除成功",
+        is_error=False,
+    )
+    assert not target.exists()

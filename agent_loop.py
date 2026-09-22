@@ -110,6 +110,9 @@ def summarize_tool_result(
     if tool_name == "inspect_git_changes":
         return "Git 变化检查完成"
 
+    if tool_name == "delete_file":
+        return "文件删除完成"
+
     return shorten_text(result.content)
 
 
