@@ -197,13 +197,18 @@ def trim_message_history(
 def execute_tool_call(
         tool_call: dict,
         workspace_root: str | None = None,
+        verification_profile: str = "pytest",
 ) -> ToolResult:
     raw = json.dumps({
         "name": tool_call["name"],
         "arguments": tool_call["arguments"],
     })
 
-    return handle_request(raw, workspace_root=workspace_root)
+    return handle_request(
+        raw,
+        workspace_root=workspace_root,
+        verification_profile=verification_profile,
+    )
 
 
 def limit_tool_result_for_model(
@@ -375,6 +380,7 @@ def run_agent(
         max_total_tool_result_chars: int = MAX_TOTAL_TOOL_RESULT_CHARS,
         context_usage: ContextUsageStats | None = None,
         max_total_message_chars: int = MAX_TOTAL_MESSAGE_CHARS,
+        verification_profile: str = "pytest",
 ) -> str:
     messages = [
         {
@@ -458,7 +464,11 @@ def run_agent(
                 )
                 raise RuntimeError(result.content)
 
-            result = execute_tool_call(response, workspace_root)
+            result = execute_tool_call(
+                response,
+                workspace_root=workspace_root,
+                verification_profile=verification_profile,
+            )
             append_tool_trace(
                 tool_trace,
                 model_step,
@@ -533,7 +543,8 @@ def run_agent(
                             "name": name,
                             "arguments": arguments,
                         },
-                        workspace_root,
+                        workspace_root=workspace_root,
+                        verification_profile=verification_profile,
                     )
 
                 append_tool_trace(

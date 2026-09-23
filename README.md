@@ -16,7 +16,7 @@
 - 使用模拟模型响应演练工具调用与最终回答循环，并限制最大执行步数
 - 接入 DeepSeek，实现真实的 read_file 工具调用、结果回传和最大步数限制
 - 将模型生成的无效 JSON 参数转换为工具错误并回传
-- 在本地指定受信工作区后，允许 DeepSeek 调用固定的 pytest 测试工具；工作目录越界会被拒绝
+- 在本地指定受信工作区后，允许 DeepSeek 调用本地预选的 pytest 或 unittest 验证方案；工作目录越界会被拒绝
 - 在受信工作区内向模型开放单文件关键词搜索；仅在本地调用方明确开启 `allow_edit=True` 时开放精确编辑
 - 工作区内的文件工具相对路径从工作区根目录解析，越界路径被拒绝
 - 真实 DeepSeek 请求和本地工具执行共用一个 Agent Loop，并保留工具调用 ID
@@ -25,7 +25,7 @@
 - 在显式开启编辑权限后安全重命名工作区内的普通文件，拒绝覆盖已有目标或自动创建父目录
 - 在工作区内递归搜索文本关键词，跳过常见环境目录、符号链接和非 UTF-8 文件，并限制结果数量
 - 只读检查 Git 状态、未暂存差异和已暂存差异，帮助模型在结束前审阅实际改动
-- 支持模型只运行指定 pytest 测试文件以加快迭代，CLI 收尾仍执行完整测试复验
+- 在 pytest 验证方案下支持模型只运行指定测试文件；CLI 收尾始终使用本地预选方案执行完整独立复验
 - 在显式开启编辑权限后删除工作区内的普通文件，拒绝删除目录或符号链接
 - 汇总多份 JSON 运行记录，统计成功率、独立复验、工具调用和文件变化
 
@@ -59,6 +59,25 @@ pytest，并显示相对任务开始基线的文件级变化。复验失败时�
 ```bash
 .venv/bin/python cli.py --workspace /你的/受信仓库 --allow-edit "修复失败的测试并复测"
 ```
+
+完整验证默认使用 pytest。对于基于 Python 标准库 `unittest` 的项目，
+由本地调用者显式选择验证方案：
+
+```bash
+.venv/bin/python cli.py \
+  --workspace /你的/受信仓库 \
+  --allow-edit \
+  --verification-profile unittest \
+  "修复失败的测试并复测"
+```
+
+当前只允许 pytest 和 unittest 两个固定 profile。profile 由本地 CLI
+或受控 benchmark 清单选择，模型工具参数中没有命令、profile 或额外参数。
+底层始终使用固定参数列表和 shell=False，不会执行任务文本或模型生成的
+shell 命令。pytest 专属的单文件测试工具只在 pytest profile 下开放。
+CLI 的最终独立复验使用与 Agent 相同的 profile，JSON 运行报告会记录
+verification_profile。benchmark 任务也可通过同名字段显式选择方案。
+
 
 可通过 `--report-json` 将同一次运行的任务、最终状态、模型回答、工具轨迹、
 独立复验和文件变化保存为 UTF-8 JSON。报告文件的父目录必须已经存在，

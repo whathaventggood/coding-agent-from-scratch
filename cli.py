@@ -5,10 +5,12 @@ import subprocess
 import json
 from dataclasses import dataclass
 from pathlib import Path
-
-from command_tool import run_tests
 from deepseek_model import read_file_and_answer
 from models import ContextUsageStats, ToolResult, ToolTraceEntry
+from command_tool import (
+    VERIFICATION_PROFILES,
+    run_tests,
+)
 
 MISSING_FILE = "<missing>"
 
@@ -146,6 +148,7 @@ def build_json_run_report(
         workspace: Path,
         allow_edit: bool,
         max_steps: int,
+        verification_profile: str,
         answer: str | None,
         tool_trace: list[ToolTraceEntry],
         context_usage: ContextUsageStats,
@@ -172,6 +175,7 @@ def build_json_run_report(
         "workspace": str(workspace),
         "allow_edit": allow_edit,
         "max_steps": max_steps,
+        "verification_profile": verification_profile,
         "status": (
             "success"
             if failure_reason is None
@@ -227,6 +231,7 @@ def save_json_run_report(
         workspace: Path,
         allow_edit: bool,
         max_steps: int,
+        verification_profile: str,
         answer: str | None,
         tool_trace: list[ToolTraceEntry],
         context_usage: ContextUsageStats,
@@ -243,6 +248,7 @@ def save_json_run_report(
         workspace=workspace,
         allow_edit=allow_edit,
         max_steps=max_steps,
+        verification_profile=verification_profile,
         answer=answer,
         tool_trace=tool_trace,
         context_usage=context_usage,
@@ -375,6 +381,12 @@ def main():
     parser.add_argument("--allow-edit", action="store_true", help="允许修改文件")
     parser.add_argument("--max-steps", type=int, default=8, help="最多请求模型的次数")
     parser.add_argument(
+        "--verification-profile",
+        choices=VERIFICATION_PROFILES,
+        default="pytest",
+        help="本地预选的完整验证方案",
+    )
+    parser.add_argument(
         "--report-json",
         type=Path,
         help="将本次运行记录保存为新的 JSON 文件",
@@ -414,6 +426,7 @@ def main():
             max_steps=args.max_steps,
             tool_trace=tool_trace,
             context_usage=context_usage,
+            verification_profile=args.verification_profile,
         )
     except RuntimeError as error:
         after = None
@@ -436,6 +449,7 @@ def main():
             workspace=workspace,
             allow_edit=args.allow_edit,
             max_steps=args.max_steps,
+            verification_profile=args.verification_profile,
             answer=None,
             tool_trace=tool_trace,
             check=None,
@@ -452,7 +466,11 @@ def main():
     failure_reason = None
 
     if args.allow_edit:
-        check = run_tests(".", str(workspace))
+        check = run_tests(
+            ".",
+            str(workspace),
+            verification_profile=args.verification_profile,
+        )
         after = capture_workspace_snapshot(workspace)
 
         if check.is_error:
@@ -474,6 +492,7 @@ def main():
         workspace=workspace,
         allow_edit=args.allow_edit,
         max_steps=args.max_steps,
+        verification_profile=args.verification_profile,
         answer=answer,
         tool_trace=tool_trace,
         check=check,

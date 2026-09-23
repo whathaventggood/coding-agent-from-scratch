@@ -6,8 +6,46 @@ from tempfile import TemporaryDirectory
 
 from models import ToolResult
 
+VERIFICATION_PROFILES = (
+    "pytest",
+    "unittest",
+)
 
-def run_tests(cwd: str, workspace_root: str) -> ToolResult:
+
+def build_verification_command(
+        verification_profile: str,
+) -> list[str]:
+    commands = {
+        "pytest": [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+        ],
+        "unittest": [
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-v",
+        ],
+    }
+
+    command = commands.get(verification_profile)
+
+    if command is None:
+        raise ValueError(
+            f"不支持的验证方案：{verification_profile}"
+        )
+
+    return command
+
+
+def run_tests(
+        cwd: str,
+        workspace_root: str,
+        verification_profile: str = "pytest",
+) -> ToolResult:
     root = Path(workspace_root).resolve()
     directory = Path(cwd)
     if not directory.is_absolute():
@@ -15,13 +53,26 @@ def run_tests(cwd: str, workspace_root: str) -> ToolResult:
     directory = directory.resolve()
 
     if not directory.is_relative_to(root):
-        return ToolResult("工作目录超出允许范围", is_error=True)
+        return ToolResult(
+            "工作目录超出允许范围",
+            is_error=True,
+        )
+
+    try:
+        command = build_verification_command(
+            verification_profile
+        )
+    except ValueError as error:
+        return ToolResult(
+            str(error),
+            is_error=True,
+        )
 
     try:
         # 每次运行使用新缓存目录，避免快速编辑后读到旧的 .pyc。
         with TemporaryDirectory(prefix="agent-pycache-") as cache_dir:
             result = subprocess.run(
-                [sys.executable, "-m", "pytest", "-q"],  # pytest自动检查你的程序是不是符合预期,通过运行提前写的一些测试代码
+                command,
                 cwd=directory,
                 timeout=30,
                 capture_output=True,

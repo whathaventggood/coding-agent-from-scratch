@@ -173,7 +173,10 @@ def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     (workspace / "test_smoke.py").write_text(
-        "def test_smoke():\n    assert 1 + 1 == 2\n",
+        "import unittest\n\n"
+        "class SmokeTests(unittest.TestCase):\n"
+        "    def test_addition(self):\n"
+        "        self.assertEqual(1 + 1, 2)\n",
         encoding="utf-8",
     )
 
@@ -205,7 +208,6 @@ def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
                 "search_file",
                 "search_workspace",
                 "run_tests",
-                "run_test_file",
                 "inspect_git_changes",
             }
             return first_response
@@ -216,7 +218,8 @@ def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
 
         payload = json.loads(tool_message["content"])
         assert payload["is_error"] is False
-        assert "1 passed" in payload["content"]
+        assert "Ran 1 test" in payload["content"]
+        assert "OK" in payload["content"]
         return final_response
 
     client.chat.completions.create.side_effect = fake_create
@@ -229,6 +232,7 @@ def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
     answer = deepseek_model.read_file_and_answer(
         "运行工作区测试",
         workspace_root=str(workspace),
+        verification_profile="unittest",
     )
 
     assert answer == "测试通过"

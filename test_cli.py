@@ -85,18 +85,32 @@ def test_cli_exits_nonzero_when_independent_verification_fails(
         monkeypatch,
         capsys,
 ):
+    received_profiles = []
+
+    def fake_agent(*args, **kwargs):
+        received_profiles.append(
+            ("agent", kwargs["verification_profile"])
+        )
+        return "已尝试修复"
+
+    def fake_verification(*args, **kwargs):
+        received_profiles.append(
+            ("verification", kwargs["verification_profile"])
+        )
+        return ToolResult(
+            "退出码: 1\n1 failed",
+            is_error=True,
+        )
+
     monkeypatch.setattr(
         cli,
         "read_file_and_answer",
-        lambda *args, **kwargs: "已尝试修复",
+        fake_agent,
     )
     monkeypatch.setattr(
         cli,
         "run_tests",
-        lambda *args: ToolResult(
-            "退出码: 1\n1 failed",
-            is_error=True,
-        ),
+        fake_verification,
     )
     report_path = tmp_path / "run-report.json"
     monkeypatch.setattr(
@@ -107,6 +121,8 @@ def test_cli_exits_nonzero_when_independent_verification_fails(
             "--workspace",
             str(tmp_path),
             "--allow-edit",
+            "--verification-profile",
+            "unittest",
             "--report-json",
             str(report_path),
             "修复失败的测试",
@@ -132,6 +148,11 @@ def test_cli_exits_nonzero_when_independent_verification_fails(
     assert report["workspace"] == str(tmp_path.resolve())
     assert report["allow_edit"] is True
     assert report["max_steps"] == 8
+    assert report["verification_profile"] == "unittest"
+    assert received_profiles == [
+        ("agent", "unittest"),
+        ("verification", "unittest"),
+    ]
     assert report["status"] == "failure"
     assert report["failure_reason"] == "本地独立复验未通过"
     assert report["answer"] == "已尝试修复"

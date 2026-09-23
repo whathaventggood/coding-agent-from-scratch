@@ -145,8 +145,11 @@ def test_run_agent_repairs_after_failed_test(tmp_path):
         encoding="utf-8",
     )
     (tmp_path / "test_calculator.py").write_text(
-        "from calculator import add\n\n"
-        "def test_add():\n    assert add(2, 3) == 5\n",
+        "import unittest\n\n"
+        "from calculator import add\n\n\n"
+        "class CalculatorTests(unittest.TestCase):\n"
+        "    def test_add(self):\n"
+        "        self.assertEqual(add(2, 3), 5)\n",
         encoding="utf-8",
     )
 
@@ -188,7 +191,12 @@ def test_run_agent_repairs_after_failed_test(tmp_path):
         "修复失败的测试",
         max_steps=5,
         workspace_root=str(tmp_path),
-        allowed_tool_names={"run_tests", "read_file", "edit_file"},
+        verification_profile="unittest",
+        allowed_tool_names={
+            "run_tests",
+            "read_file",
+            "edit_file"
+        },
     )
 
     assert answer == "修复完成"

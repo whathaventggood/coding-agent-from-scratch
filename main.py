@@ -46,6 +46,7 @@ def dispatch(
         max_lines: int | None = None,
         content: str | None = None,
         destination: str | None = None,
+        verification_profile: str = "pytest",
 ) -> ToolResult:
     file_tools = {
         "read_file",
@@ -184,7 +185,11 @@ def dispatch(
                 content="缺少受信工作区",
                 is_error=True,
             )
-        return run_tests(path, workspace_root)
+        return run_tests(
+            path,
+            workspace_root,
+            verification_profile=verification_profile,
+        )
 
     elif tool_name == "run_test_file":
         if workspace_root is None:
@@ -363,6 +368,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
 def handle_request(
         raw: str,
         workspace_root: str | None = None,
+        verification_profile: str = "pytest",
 ) -> ToolResult:
     result = parse_request(raw)
 
@@ -383,4 +389,5 @@ def handle_request(
         max_lines=result.max_lines,
         content=result.content,
         destination=result.destination,
+        verification_profile=verification_profile,
     )

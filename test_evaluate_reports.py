@@ -141,6 +141,7 @@ def test_benchmark_manifest_prepares_clean_git_workspace(
                     },
                     "allow_edit": True,
                     "max_steps": 8,
+                    "verification_profile": "unittest",
                 }],
             },
             ensure_ascii=False,
@@ -152,6 +153,7 @@ def test_benchmark_manifest_prepares_clean_git_workspace(
 
     assert len(tasks) == 1
     assert tasks[0]["name"] == "fix-addition"
+    assert tasks[0]["verification_profile"] == "unittest"
 
     command = build_cli_command(
         tasks[0],
@@ -162,6 +164,10 @@ def test_benchmark_manifest_prepares_clean_git_workspace(
     assert command[0] == sys.executable
     assert command[1].endswith("cli.py")
     assert "--allow-edit" in command
+    profile_index = command.index(
+        "--verification-profile"
+    )
+    assert command[profile_index + 1] == "unittest"
     assert command[-1] == "修复加法函数并运行测试"
 
     workspace = tmp_path / "workspace"
@@ -255,7 +261,7 @@ def test_run_benchmark_suite_writes_summary_without_real_model(
 
     summary = json.loads(
         (
-            output_directory / "summary.json"
+                output_directory / "summary.json"
         ).read_text(encoding="utf-8")
     )
 

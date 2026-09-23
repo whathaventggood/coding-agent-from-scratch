@@ -9,6 +9,7 @@ from evaluate_reports import (
     print_evaluation_summary,
     summarize_reports,
 )
+from command_tool import VERIFICATION_PROFILES
 
 TASK_NAME_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
 ALLOWED_TASK_FIELDS = {
@@ -17,6 +18,7 @@ ALLOWED_TASK_FIELDS = {
     "files",
     "allow_edit",
     "max_steps",
+    "verification_profile",
 }
 
 
@@ -65,6 +67,10 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
         files = task.get("files")
         allow_edit = task.get("allow_edit", True)
         max_steps = task.get("max_steps", 8)
+        verification_profile = task.get(
+            "verification_profile",
+            "pytest",
+        )
 
         if (
                 not isinstance(name, str)
@@ -120,6 +126,17 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
                 f"任务 {name} 的 max_steps 必须在 1 到 20 之间"
             )
 
+        if (
+                not isinstance(verification_profile, str)
+                or verification_profile
+                not in VERIFICATION_PROFILES
+        ):
+            choices = ", ".join(VERIFICATION_PROFILES)
+            raise ValueError(
+                f"任务 {name} 的 verification_profile "
+                f"必须是以下值之一：{choices}"
+            )
+
         seen_names.add(name)
         normalized_tasks.append({
             "name": name,
@@ -127,6 +144,7 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
             "files": normalized_files,
             "allow_edit": allow_edit,
             "max_steps": max_steps,
+            "verification_profile": verification_profile,
         })
 
     return normalized_tasks
@@ -222,6 +240,8 @@ def build_cli_command(
         str(workspace),
         "--max-steps",
         str(task["max_steps"]),
+        "--verification-profile",
+        task["verification_profile"],
         "--report-json",
         str(report_path),
     ]

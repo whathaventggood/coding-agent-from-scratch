@@ -5,6 +5,7 @@ from file_tools import (
 )
 import subprocess
 import json
+from command_tool import run_tests
 
 
 def test_missing_arguments():
@@ -661,6 +662,42 @@ def test_run_tests_in_trusted_workspace(tmp_path):
 
     assert result.is_error is False
     assert "1 passed" in result.content
+
+
+def test_run_tests_uses_allowlisted_unittest_profile(
+        tmp_path,
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    (workspace / "test_unittest_smoke.py").write_text(
+        "import unittest\n\n"
+        "class SmokeTests(unittest.TestCase):\n"
+        "    def test_addition(self):\n"
+        "        self.assertEqual(1 + 1, 2)\n",
+        encoding="utf-8",
+    )
+
+    result = run_tests(
+        ".",
+        str(workspace),
+        verification_profile="unittest",
+    )
+
+    assert result.is_error is False
+    assert "Ran 1 test" in result.content
+    assert "OK" in result.content
+
+    rejected = run_tests(
+        ".",
+        str(workspace),
+        verification_profile="custom-command",
+    )
+
+    assert rejected == ToolResult(
+        content="不支持的验证方案：custom-command",
+        is_error=True,
+    )
 
 
 def test_run_tests_rejects_outside_workspace(tmp_path):

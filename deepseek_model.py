@@ -48,7 +48,10 @@ RUN_TESTS_TOOL = {
     "type": "function",
     "function": {
         "name": "run_tests",
-        "description": "在受信工作区内运行固定的 pytest 测试命令",
+        "description": (
+            "在受信工作区内运行本地调用方选择的固定验证方案；"
+            "模型不能提供验证命令或额外命令参数"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -419,6 +422,7 @@ def read_file_and_answer(
         allow_edit: bool = False,
         tool_trace: list[ToolTraceEntry] | None = None,
         context_usage: ContextUsageStats | None = None,
+        verification_profile: str = "pytest",
 ) -> str:
     if allow_edit and workspace_root is None:
         raise ValueError("编辑工具需要受信工作区")
@@ -441,7 +445,6 @@ def read_file_and_answer(
             SEARCH_WORKSPACE_TOOL,
             RUN_TESTS_TOOL,
             INSPECT_GIT_CHANGES_TOOL,
-            RUN_TEST_FILE_TOOL,
         ])
         allowed_tool_names.update({
             "list_files",
@@ -449,8 +452,11 @@ def read_file_and_answer(
             "run_tests",
             "search_workspace",
             "inspect_git_changes",
-            "run_test_file",
         })
+
+        if verification_profile == "pytest":
+            available_tools.append(RUN_TEST_FILE_TOOL)
+            allowed_tool_names.add("run_test_file")
 
         if allow_edit:
             available_tools.extend([
@@ -513,6 +519,7 @@ def read_file_and_answer(
         allowed_tool_names=allowed_tool_names,
         tool_trace=tool_trace,
         context_usage=context_usage,
+        verification_profile=verification_profile,
     )
 
 

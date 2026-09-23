@@ -8,7 +8,8 @@
         "test_calculator.py": "from calculator import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n"
       },
       "allow_edit": true,
-      "max_steps": 8
+      "max_steps": 8,
+      "verification_profile": "pytest"
     },
     {
       "name": "create-text-normalizer",
@@ -17,7 +18,8 @@
         "test_text_utils.py": "from text_utils import normalize_name\n\n\ndef test_normalize_name():\n    assert normalize_name(\"  Ada   Lovelace \") == \"ada-lovelace\"\n"
       },
       "allow_edit": true,
-      "max_steps": 8
+      "max_steps": 8,
+      "verification_profile": "pytest"
     }
   ]
 }
