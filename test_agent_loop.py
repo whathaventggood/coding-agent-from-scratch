@@ -7,6 +7,8 @@ from agent_loop import (
     estimate_messages_chars,
     execute_tool_call,
     run_agent,
+    HistoryTrimState,
+    trim_message_history,
 )
 from models import ContextUsageStats, ToolResult
 
@@ -414,3 +416,152 @@ def test_compressing_tool_message_reduces_full_message_chars():
     assert after_chars < before_chars
     assert compressed_count == 1
     assert released_chars == 1000
+
+
+def test_trim_history_keeps_user_and_latest_tool_interaction():
+    old_tool_message = {
+        "role": "tool",
+        "tool_call_id": "call_1",
+        "content": "[旧工具结果已压缩] read_file：读取成功",
+    }
+    latest_tool_message = {
+        "role": "tool",
+        "tool_call_id": "call_2",
+        "content": "最新工具结果",
+    }
+
+    old_state = ToolMessageState(
+        message=old_tool_message,
+        compressed_content=old_tool_message["content"],
+        included_chars=1000,
+        is_compressed=True,
+    )
+    latest_state = ToolMessageState(
+        message=latest_tool_message,
+        compressed_content=(
+            "[旧工具结果已压缩] read_file：读取成功"
+        ),
+        included_chars=1000,
+    )
+
+    latest_assistant_message = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{
+            "id": "call_2",
+            "name": "read_file",
+        }],
+    }
+
+    messages = [
+        {
+            "role": "user",
+            "content": "检查项目",
+        },
+        {
+            "role": "assistant",
+            "content": "x" * 1000,
+        },
+        old_tool_message,
+        latest_assistant_message,
+        latest_tool_message,
+    ]
+    states = [
+        old_state,
+        latest_state,
+    ]
+    trim_state = HistoryTrimState()
+
+    before_chars = estimate_messages_chars(messages)
+    max_chars = before_chars - 200
+
+    removed_count, released_chars = trim_message_history(
+        messages,
+        states,
+        trim_state,
+        max_chars=max_chars,
+    )
+
+    assert messages[0] == {
+        "role": "user",
+        "content": "检查项目",
+    }
+    assert messages[1]["role"] == "assistant"
+    assert "[较早工具结果摘要]" in messages[1]["content"]
+    assert "read_file" in messages[1]["content"]
+    assert messages[-2] is latest_assistant_message
+    assert messages[-1] is latest_tool_message
+
+    assert states == [latest_state]
+    assert removed_count == 2
+    assert released_chars > 0
+    assert estimate_messages_chars(messages) <= max_chars
+
+
+def test_run_agent_trims_old_history_before_model_request(tmp_path):
+    file_path = tmp_path / "small.txt"
+    file_path.write_text(
+        "abc",
+        encoding="utf-8",
+    )
+
+    model_call_count = 0
+    context_usage = ContextUsageStats()
+
+    def fake_model(messages):
+        nonlocal model_call_count
+        model_call_count += 1
+
+        if model_call_count == 3:
+            assert messages[0] == {
+                "role": "user",
+                "content": "连续读取文件",
+            }
+            assert messages[1]["role"] == "assistant"
+            assert "[较早工具结果摘要]" in messages[1]["content"]
+            assert messages[-2]["role"] == "assistant"
+            assert messages[-1]["role"] == "tool"
+
+            return {
+                "type": "final",
+                "content": "读取完成",
+            }
+
+        call_id = f"call_{model_call_count}"
+
+        return {
+            "type": "tool_calls",
+            "assistant_message": {
+                "role": "assistant",
+                "content": "x" * 700,
+                "tool_calls": [{
+                    "id": call_id,
+                    "name": "read_file",
+                }],
+            },
+            "calls": [{
+                "id": call_id,
+                "name": "read_file",
+                "arguments": json.dumps({
+                    "path": str(file_path),
+                }),
+            }],
+        }
+
+    answer = run_agent(
+        fake_model,
+        "连续读取文件",
+        max_steps=3,
+        max_total_message_chars=1500,
+        context_usage=context_usage,
+    )
+
+    assert answer == "读取完成"
+    assert model_call_count == 3
+    assert context_usage.history_trim_count == 1
+    assert context_usage.trimmed_message_count == 2
+    assert context_usage.released_history_chars > 0
+    assert all(
+        value <= 1500
+        for value in context_usage.request_message_chars
+    )

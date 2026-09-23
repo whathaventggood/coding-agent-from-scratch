@@ -35,6 +35,9 @@ class ContextUsageStats:
     peak_message_chars: int = 0
     compressed_tool_message_count: int = 0
     released_tool_result_chars: int = 0
+    history_trim_count: int = 0
+    trimmed_message_count: int = 0
+    released_history_chars: int = 0
 
     @property
     def model_request_count(self) -> int:

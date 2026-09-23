@@ -2,10 +2,12 @@ import json
 
 from main import handle_request
 from models import ContextUsageStats, ToolResult, ToolTraceEntry
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 MAX_TOOL_RESULT_CHARS = 4000
 MAX_TOTAL_TOOL_RESULT_CHARS = 12000
+MAX_HISTORY_SUMMARY_CHARS = 2000
+MAX_TOTAL_MESSAGE_CHARS = 24000
 
 
 @dataclass
@@ -14,6 +16,11 @@ class ToolMessageState:
     compressed_content: str
     included_chars: int
     is_compressed: bool = False
+
+
+@dataclass
+class HistoryTrimState:
+    summary_lines: list[str] = field(default_factory=list)
 
 
 def json_fallback(value):
@@ -37,6 +44,154 @@ def estimate_messages_chars(messages: list) -> int:
         default=json_fallback,
     )
     return len(serialized)
+
+
+def get_message_role(message) -> str | None:
+    if isinstance(message, dict):
+        return message.get("role")
+
+    return getattr(message, "role", None)
+
+
+def limit_history_summary_lines(
+        lines: list[str],
+        limit: int = MAX_HISTORY_SUMMARY_CHARS,
+) -> list[str]:
+    prefix = "[较早工具结果摘要]"
+    selected_reversed = []
+    used_chars = len(prefix)
+
+    for line in reversed(lines):
+        required_chars = 1 + len(line)
+
+        if used_chars + required_chars > limit:
+            break
+
+        selected_reversed.append(line)
+        used_chars += required_chars
+
+    return list(reversed(selected_reversed))
+
+
+def build_history_summary_message(
+        lines: list[str],
+) -> dict:
+    content = "[较早工具结果摘要]"
+
+    if lines:
+        content += "\n" + "\n".join(lines)
+
+    return {
+        "role": "assistant",
+        "content": content,
+    }
+
+
+def trim_message_history(
+        messages: list,
+        tool_message_states: list[ToolMessageState],
+        trim_state: HistoryTrimState,
+        max_chars: int,
+) -> tuple[int, int]:
+    before_chars = estimate_messages_chars(messages)
+
+    if before_chars <= max_chars:
+        return 0, 0
+
+    pending_indices = []
+
+    for state in tool_message_states:
+        if state.is_compressed:
+            continue
+
+        for index, message in enumerate(messages):
+            if message is state.message:
+                pending_indices.append(index)
+                break
+
+    if not pending_indices:
+        raise RuntimeError(
+            "完整消息历史超过近似字符上限，"
+            "且没有可安全裁剪的旧工具交互"
+        )
+
+    keep_start = min(pending_indices)
+
+    if (
+            keep_start > 1
+            and get_message_role(messages[keep_start - 1])
+            == "assistant"
+    ):
+        keep_start -= 1
+
+    removable_messages = messages[1:keep_start]
+    removable_ids = {
+        id(message)
+        for message in removable_messages
+    }
+
+    removed_states = [
+        state
+        for state in tool_message_states
+        if (
+                id(state.message) in removable_ids
+                and state.is_compressed
+        )
+    ]
+
+    if not removed_states:
+        raise RuntimeError(
+            "完整消息历史超过近似字符上限，"
+            "但旧消息尚未形成可安全裁剪的完整交互"
+        )
+
+    trim_state.summary_lines.extend(
+        state.compressed_content
+        for state in removed_states
+    )
+    trim_state.summary_lines = limit_history_summary_lines(
+        trim_state.summary_lines
+    )
+
+    summary_message = build_history_summary_message(
+        trim_state.summary_lines
+    )
+
+    messages[1:keep_start] = [summary_message]
+
+    tool_message_states[:] = [
+        state
+        for state in tool_message_states
+        if id(state.message) not in removable_ids
+    ]
+
+    after_chars = estimate_messages_chars(messages)
+
+    while (
+            after_chars > max_chars
+            and trim_state.summary_lines
+    ):
+        trim_state.summary_lines.pop(0)
+
+        if trim_state.summary_lines:
+            messages[1] = build_history_summary_message(
+                trim_state.summary_lines
+            )
+        else:
+            messages.pop(1)
+
+        after_chars = estimate_messages_chars(messages)
+
+    if after_chars > max_chars:
+        raise RuntimeError(
+            "初始任务和最新工具交互已经超过"
+            "完整消息历史近似字符上限"
+        )
+
+    removed_message_count = len(removable_messages)
+    released_chars = before_chars - after_chars
+
+    return removed_message_count, released_chars
 
 
 def execute_tool_call(
@@ -219,6 +374,7 @@ def run_agent(
         tool_trace: list[ToolTraceEntry] | None = None,
         max_total_tool_result_chars: int = MAX_TOTAL_TOOL_RESULT_CHARS,
         context_usage: ContextUsageStats | None = None,
+        max_total_message_chars: int = MAX_TOTAL_MESSAGE_CHARS,
 ) -> str:
     messages = [
         {
@@ -228,8 +384,22 @@ def run_agent(
     ]
     tool_result_chars_sent = 0
     tool_message_states: list[ToolMessageState] = []
+    history_trim_state = HistoryTrimState()
 
     for model_step in range(1, max_steps + 1):
+        trimmed_count, released_history_chars = trim_message_history(
+            messages,
+            tool_message_states,
+            history_trim_state,
+            max_chars=max_total_message_chars,
+        )
+
+        if context_usage is not None and trimmed_count:
+            context_usage.history_trim_count += 1
+            context_usage.trimmed_message_count += trimmed_count
+            context_usage.released_history_chars += (
+                released_history_chars
+            )
         message_chars = estimate_messages_chars(messages)
 
         if context_usage is not None:

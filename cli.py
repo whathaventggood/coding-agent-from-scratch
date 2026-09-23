@@ -198,6 +198,15 @@ def build_json_run_report(
             "released_tool_result_chars": (
                 context_usage.released_tool_result_chars
             ),
+            "history_trim_count": (
+                context_usage.history_trim_count
+            ),
+            "trimmed_message_count": (
+                context_usage.trimmed_message_count
+            ),
+            "released_history_chars": (
+                context_usage.released_history_chars
+            ),
         },
         "verification": (
             None
@@ -312,6 +321,18 @@ def print_run_report(
     print(
         "- 已释放工具结果原文字符："
         f"{context_usage.released_tool_result_chars}"
+    )
+    print(
+        "- 完整历史裁剪次数："
+        f"{context_usage.history_trim_count}"
+    )
+    print(
+        "- 裁剪掉的旧消息数："
+        f"{context_usage.trimmed_message_count}"
+    )
+    print(
+        "- 完整历史释放字符："
+        f"{context_usage.released_history_chars}"
     )
 
     print("\n本地独立复验：")
