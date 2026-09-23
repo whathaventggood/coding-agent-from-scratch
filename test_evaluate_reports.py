@@ -37,6 +37,13 @@ def test_summarize_success_and_failure_reports(tmp_path):
                 "modified": ["calculator.py"],
                 "deleted": [],
             },
+            "context_usage": {
+                "model_request_count": 3,
+                "peak_message_chars": 12000,
+                "history_trim_count": 1,
+                "trimmed_message_count": 2,
+                "released_history_chars": 800,
+            },
         },
     )
 
@@ -79,3 +86,23 @@ def test_summarize_success_and_failure_reports(tmp_path):
     assert summary["runs"][0]["verification"] == "passed"
     assert summary["runs"][1]["status"] == "failure"
     assert summary["runs"][1]["verification"] == "skipped"
+
+    assert summary["context_observed_runs"] == 1
+    assert summary["total_model_requests"] == 3
+    assert summary["max_peak_message_chars"] == 12000
+    assert summary["total_history_trims"] == 1
+    assert summary["total_trimmed_messages"] == 2
+    assert summary["total_released_history_chars"] == 800
+
+    assert (
+            summary["runs"][0]["context_usage_available"]
+            is True
+    )
+    assert summary["runs"][0]["model_requests"] == 3
+    assert summary["runs"][0]["peak_message_chars"] == 12000
+    assert summary["runs"][0]["history_trim_count"] == 1
+
+    assert (
+            summary["runs"][1]["context_usage_available"]
+            is False
+    )

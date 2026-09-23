@@ -9,6 +9,14 @@ REQUIRED_FIELDS = {
     "workspace_changes",
 }
 
+CONTEXT_USAGE_FIELDS = (
+    "model_request_count",
+    "peak_message_chars",
+    "history_trim_count",
+    "trimmed_message_count",
+    "released_history_chars",
+)
+
 
 def load_run_report(path: Path) -> dict:
     try:
@@ -51,6 +59,40 @@ def load_run_report(path: Path) -> dict:
     return report
 
 
+def read_context_usage(
+        report: dict,
+        path: Path,
+) -> dict | None:
+    context_usage = report.get("context_usage")
+
+    if context_usage is None:
+        return None
+
+    if not isinstance(context_usage, dict):
+        raise ValueError(
+            f"报告 context_usage 必须是对象：{path}"
+        )
+
+    values = {}
+
+    for field_name in CONTEXT_USAGE_FIELDS:
+        value = context_usage.get(field_name, 0)
+
+        if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+        ):
+            raise ValueError(
+                f"报告 context_usage.{field_name} "
+                f"必须是非负整数：{path}"
+            )
+
+        values[field_name] = value
+
+    return values
+
+
 def count_file_changes(changes) -> int:
     if not isinstance(changes, dict):
         return 0
@@ -74,6 +116,13 @@ def summarize_reports(report_paths: list[Path]) -> dict:
     total_tool_calls = 0
     failed_tool_calls = 0
     total_file_changes = 0
+
+    context_observed_runs = 0
+    total_model_requests = 0
+    max_peak_message_chars = 0
+    total_history_trims = 0
+    total_trimmed_messages = 0
+    total_released_history_chars = 0
 
     for input_path in report_paths:
         path = input_path.expanduser().resolve()
@@ -108,6 +157,48 @@ def summarize_reports(report_paths: list[Path]) -> dict:
         failed_tool_calls += tool_errors
         total_file_changes += file_changes
 
+        context_usage = read_context_usage(
+            report,
+            path,
+        )
+        context_usage_available = context_usage is not None
+
+        if context_usage is None:
+            model_requests = 0
+            peak_message_chars = 0
+            history_trim_count = 0
+            trimmed_message_count = 0
+            released_history_chars = 0
+        else:
+            context_observed_runs += 1
+
+            model_requests = context_usage[
+                "model_request_count"
+            ]
+            peak_message_chars = context_usage[
+                "peak_message_chars"
+            ]
+            history_trim_count = context_usage[
+                "history_trim_count"
+            ]
+            trimmed_message_count = context_usage[
+                "trimmed_message_count"
+            ]
+            released_history_chars = context_usage[
+                "released_history_chars"
+            ]
+
+            total_model_requests += model_requests
+            max_peak_message_chars = max(
+                max_peak_message_chars,
+                peak_message_chars,
+            )
+            total_history_trims += history_trim_count
+            total_trimmed_messages += trimmed_message_count
+            total_released_history_chars += (
+                released_history_chars
+            )
+
         runs.append({
             "path": str(path),
             "task": report.get("task", ""),
@@ -116,6 +207,12 @@ def summarize_reports(report_paths: list[Path]) -> dict:
             "tool_calls": tool_calls,
             "failed_tool_calls": tool_errors,
             "file_changes": file_changes,
+            "context_usage_available": (
+                context_usage_available
+            ),
+            "model_requests": model_requests,
+            "peak_message_chars": peak_message_chars,
+            "history_trim_count": history_trim_count,
         })
 
     total_runs = len(runs)
@@ -130,6 +227,14 @@ def summarize_reports(report_paths: list[Path]) -> dict:
         "total_tool_calls": total_tool_calls,
         "failed_tool_calls": failed_tool_calls,
         "total_file_changes": total_file_changes,
+        "context_observed_runs": context_observed_runs,
+        "total_model_requests": total_model_requests,
+        "max_peak_message_chars": max_peak_message_chars,
+        "total_history_trims": total_history_trims,
+        "total_trimmed_messages": total_trimmed_messages,
+        "total_released_history_chars": (
+            total_released_history_chars
+        ),
         "runs": runs,
     }
 
@@ -161,10 +266,39 @@ def print_evaluation_summary(summary: dict) -> None:
         f" | 工具错误：{summary['failed_tool_calls']}"
     )
     print(f"文件变化总数：{summary['total_file_changes']}")
+    print(
+        "上下文观测覆盖："
+        f"{summary['context_observed_runs']}/{total_runs}"
+    )
+
+    if summary["context_observed_runs"]:
+        print(
+            f"模型请求总数：{summary['total_model_requests']}"
+            f" | 最大消息峰值："
+            f"{summary['max_peak_message_chars']}"
+        )
+        print(
+            f"历史裁剪：{summary['total_history_trims']}"
+            f" | 删除旧消息："
+            f"{summary['total_trimmed_messages']}"
+            f" | 释放历史字符："
+            f"{summary['total_released_history_chars']}"
+        )
+    else:
+        print("上下文指标：旧报告未提供")
 
     print("\n逐次运行：")
 
     for run in summary["runs"]:
+        if run["context_usage_available"]:
+            context_part = (
+                f" | model_requests={run['model_requests']}"
+                f" | peak_chars={run['peak_message_chars']}"
+                f" | trims={run['history_trim_count']}"
+            )
+        else:
+            context_part = " | context=unavailable"
+
         print(
             f"- {run['path']}"
             f" | {run['status']}"
@@ -172,6 +306,7 @@ def print_evaluation_summary(summary: dict) -> None:
             f" | tools={run['tool_calls']}"
             f" | tool_errors={run['failed_tool_calls']}"
             f" | changes={run['file_changes']}"
+            f"{context_part}"
         )
 
 
