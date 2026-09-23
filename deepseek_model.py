@@ -367,6 +367,51 @@ def request_file_read(prompt: str):
     return response.choices[0].message  # 还需调用message.tool_calls
 
 
+def build_workspace_agent_prompt(
+        prompt: str,
+        allow_edit: bool,
+) -> str:
+    instructions = [
+        (
+            "你正在受信工作区中完成编码任务，"
+            "请根据实际文件和测试结果行动。"
+        ),
+        (
+            "没有获得新证据时，不要重复执行"
+            "同一个失败的读取或搜索。"
+        ),
+    ]
+
+    if allow_edit:
+        instructions.extend([
+            (
+                "当前任务允许编辑。若测试或导入明确依赖"
+                "一个不存在的源文件，应使用 create_file 创建它，"
+                "不要反复读取已确认不存在的路径。"
+            ),
+            (
+                "修改后必须运行测试验证；"
+                "测试未通过时不要声称任务完成。"
+            ),
+        ])
+    else:
+        instructions.append(
+            "当前任务不允许编辑，不要尝试调用编辑类工具。"
+        )
+
+    guidance = "\n".join(
+        f"- {instruction}"
+        for instruction in instructions
+    )
+
+    return (
+        "请遵守以下工作流：\n"
+        f"{guidance}\n\n"
+        "用户任务：\n"
+        f"{prompt}"
+    )
+
+
 def read_file_and_answer(
         prompt: str,
         max_steps: int = 5,
@@ -378,6 +423,13 @@ def read_file_and_answer(
     if allow_edit and workspace_root is None:
         raise ValueError("编辑工具需要受信工作区")
 
+    agent_prompt = prompt
+
+    if workspace_root is not None:
+        agent_prompt = build_workspace_agent_prompt(
+            prompt,
+            allow_edit,
+        )
     client = create_deepseek_client()
     available_tools = [READ_FILE_TOOL]
     allowed_tool_names = {"read_file"}
@@ -455,7 +507,7 @@ def read_file_and_answer(
 
     return run_agent(
         model,
-        prompt,
+        agent_prompt,
         max_steps=max_steps,
         workspace_root=workspace_root,
         allowed_tool_names=allowed_tool_names,

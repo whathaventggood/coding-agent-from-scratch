@@ -256,6 +256,14 @@ def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
 
     def fake_create(**kwargs):
         if client.chat.completions.create.call_count == 1:
+            first_message = kwargs["messages"][0]
+
+            assert first_message["role"] == "user"
+            assert "用户任务：\n修改 note.txt" in (
+                first_message["content"]
+            )
+            assert "create_file" in first_message["content"]
+            assert "不要重复执行" in first_message["content"]
             names = {tool["function"]["name"] for tool in kwargs["tools"]}
             assert names == {
                 "list_files",
