@@ -1,7 +1,7 @@
 import json
 
 from main import handle_request
-from models import ToolResult, ToolTraceEntry
+from models import ContextUsageStats, ToolResult, ToolTraceEntry
 from dataclasses import dataclass
 
 MAX_TOOL_RESULT_CHARS = 4000
@@ -14,6 +14,29 @@ class ToolMessageState:
     compressed_content: str
     included_chars: int
     is_compressed: bool = False
+
+
+def json_fallback(value):
+    model_dump = getattr(type(value), "model_dump", None)
+
+    if callable(model_dump):
+        return model_dump(
+            value,
+            mode="json",
+            exclude_none=True,
+        )
+
+    return str(value)
+
+
+def estimate_messages_chars(messages: list) -> int:
+    serialized = json.dumps(
+        messages,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=json_fallback,
+    )
+    return len(serialized)
 
 
 def execute_tool_call(
@@ -152,7 +175,8 @@ def build_compressed_tool_content(
 
 def compress_tool_messages_seen_by_model(
         states: list[ToolMessageState],
-) -> int:
+) -> tuple[int, int]:
+    compressed_count = 0
     released_chars = 0
 
     for state in states:
@@ -161,9 +185,10 @@ def compress_tool_messages_seen_by_model(
 
         state.message["content"] = state.compressed_content
         state.is_compressed = True
+        compressed_count += 1
         released_chars += state.included_chars
 
-    return released_chars
+    return compressed_count, released_chars
 
 
 def append_tool_trace(
@@ -193,6 +218,7 @@ def run_agent(
         allowed_tool_names: set[str] | None = None,
         tool_trace: list[ToolTraceEntry] | None = None,
         max_total_tool_result_chars: int = MAX_TOTAL_TOOL_RESULT_CHARS,
+        context_usage: ContextUsageStats | None = None,
 ) -> str:
     messages = [
         {
@@ -204,11 +230,26 @@ def run_agent(
     tool_message_states: list[ToolMessageState] = []
 
     for model_step in range(1, max_steps + 1):
+        message_chars = estimate_messages_chars(messages)
+
+        if context_usage is not None:
+            context_usage.request_message_chars.append(message_chars)
+            context_usage.peak_message_chars = max(
+                context_usage.peak_message_chars,
+                message_chars,
+            )
+
         response = model(messages)
 
-        released_chars = compress_tool_messages_seen_by_model(
-            tool_message_states,
+        compressed_count, released_chars = (
+            compress_tool_messages_seen_by_model(
+                tool_message_states,
+            )
         )
+
+        if context_usage is not None:
+            context_usage.compressed_tool_message_count += compressed_count
+            context_usage.released_tool_result_chars += released_chars
         tool_result_chars_sent = max(
             0,
             tool_result_chars_sent - released_chars,

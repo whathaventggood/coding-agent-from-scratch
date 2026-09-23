@@ -1,8 +1,14 @@
 import json
 import pytest
 
-from agent_loop import execute_tool_call, run_agent
-from models import ToolResult
+from agent_loop import (
+    ToolMessageState,
+    compress_tool_messages_seen_by_model,
+    estimate_messages_chars,
+    execute_tool_call,
+    run_agent,
+)
+from models import ContextUsageStats, ToolResult
 
 
 def test_execute_tool_call_reads_file(tmp_path):
@@ -353,12 +359,58 @@ def test_run_agent_compresses_seen_results_and_reuses_budget(
             "content": "读取完成",
         }
 
+    context_usage = ContextUsageStats()
     answer = run_agent(
         fake_model,
         "连续读取文件",
         max_steps=3,
         max_total_tool_result_chars=12,
+        context_usage=context_usage,
     )
 
     assert answer == "读取完成"
     assert model_call_count == 3
+    assert context_usage.model_request_count == 3
+    assert len(context_usage.request_message_chars) == 3
+    assert context_usage.peak_message_chars == max(
+        context_usage.request_message_chars
+    )
+    assert context_usage.compressed_tool_message_count == 2
+    assert context_usage.released_tool_result_chars == 20
+
+
+def test_compressing_tool_message_reduces_full_message_chars():
+    tool_message = {
+        "role": "tool",
+        "content": "x" * 1000,
+        "is_error": False,
+    }
+    messages = [
+        {
+            "role": "user",
+            "content": "读取文件",
+        },
+        tool_message,
+    ]
+    states = [
+        ToolMessageState(
+            message=tool_message,
+            compressed_content=(
+                "[旧工具结果已压缩] "
+                "read_file：读取成功，返回 1000 个字符"
+            ),
+            included_chars=1000,
+        )
+    ]
+
+    before_chars = estimate_messages_chars(messages)
+
+    compressed_count, released_chars = (
+        compress_tool_messages_seen_by_model(states)
+    )
+
+    after_chars = estimate_messages_chars(messages)
+
+    assert after_chars < before_chars
+    assert compressed_count == 1
+    assert released_chars == 1000

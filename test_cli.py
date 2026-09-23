@@ -136,6 +136,13 @@ def test_cli_exits_nonzero_when_independent_verification_fails(
     assert report["failure_reason"] == "本地独立复验未通过"
     assert report["answer"] == "已尝试修复"
     assert report["tool_trace"] == []
+    assert report["context_usage"] == {
+        "model_request_count": 0,
+        "request_message_chars": [],
+        "peak_message_chars": 0,
+        "compressed_tool_message_count": 0,
+        "released_tool_result_chars": 0,
+    }
     assert report["verification"] == {
         "content": "退出码: 1\n1 failed",
         "is_error": True,

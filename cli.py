@@ -8,7 +8,7 @@ from pathlib import Path
 
 from command_tool import run_tests
 from deepseek_model import read_file_and_answer
-from models import ToolResult, ToolTraceEntry
+from models import ContextUsageStats, ToolResult, ToolTraceEntry
 
 MISSING_FILE = "<missing>"
 
@@ -148,6 +148,7 @@ def build_json_run_report(
         max_steps: int,
         answer: str | None,
         tool_trace: list[ToolTraceEntry],
+        context_usage: ContextUsageStats,
         check: ToolResult | None,
         before: WorkspaceSnapshot | None,
         after: WorkspaceSnapshot | None,
@@ -187,6 +188,17 @@ def build_json_run_report(
             }
             for entry in tool_trace
         ],
+        "context_usage": {
+            "model_request_count": context_usage.model_request_count,
+            "request_message_chars": context_usage.request_message_chars,
+            "peak_message_chars": context_usage.peak_message_chars,
+            "compressed_tool_message_count": (
+                context_usage.compressed_tool_message_count
+            ),
+            "released_tool_result_chars": (
+                context_usage.released_tool_result_chars
+            ),
+        },
         "verification": (
             None
             if check is None
@@ -208,6 +220,7 @@ def save_json_run_report(
         max_steps: int,
         answer: str | None,
         tool_trace: list[ToolTraceEntry],
+        context_usage: ContextUsageStats,
         check: ToolResult | None,
         before: WorkspaceSnapshot | None,
         after: WorkspaceSnapshot | None,
@@ -223,6 +236,7 @@ def save_json_run_report(
         max_steps=max_steps,
         answer=answer,
         tool_trace=tool_trace,
+        context_usage=context_usage,
         check=check,
         before=before,
         after=after,
@@ -251,6 +265,7 @@ def save_json_run_report(
 def print_run_report(
         answer: str | None,
         tool_trace: list[ToolTraceEntry],
+        context_usage: ContextUsageStats,
         check,
         before: WorkspaceSnapshot | None,
         after: WorkspaceSnapshot | None,
@@ -276,6 +291,28 @@ def print_run_report(
                 f" | {status}"
                 f" | {entry.summary}"
             )
+
+    print("\n模型上下文用量（近似字符）：")
+    print(f"- 模型请求次数：{context_usage.model_request_count}")
+
+    if context_usage.request_message_chars:
+        request_sizes = ", ".join(
+            str(value)
+            for value in context_usage.request_message_chars
+        )
+        print(f"- 各次完整消息：{request_sizes}")
+    else:
+        print("- 各次完整消息：无")
+
+    print(f"- 完整消息峰值：{context_usage.peak_message_chars}")
+    print(
+        "- 已压缩旧工具消息："
+        f"{context_usage.compressed_tool_message_count}"
+    )
+    print(
+        "- 已释放工具结果原文字符："
+        f"{context_usage.released_tool_result_chars}"
+    )
 
     print("\n本地独立复验：")
     if check is None:
@@ -346,6 +383,7 @@ def main():
         before = capture_workspace_snapshot(workspace)  # Agent 动手前先给整个有效工作区的文件内容留个案底（hash）
 
     tool_trace: list[ToolTraceEntry] = []
+    context_usage = ContextUsageStats()
 
     try:
         answer = read_file_and_answer(
@@ -354,6 +392,7 @@ def main():
             allow_edit=args.allow_edit,
             max_steps=args.max_steps,
             tool_trace=tool_trace,
+            context_usage=context_usage,
         )
     except RuntimeError as error:
         after = None
@@ -367,6 +406,7 @@ def main():
             before=before,
             after=after,
             failure_reason=f"模型执行失败：{error}",
+            context_usage=context_usage,
         )
 
         save_json_run_report(
@@ -381,6 +421,7 @@ def main():
             before=before,
             after=after,
             failure_reason=f"模型执行失败：{error}",
+            context_usage=context_usage,
         )
 
         raise SystemExit(1)
@@ -403,6 +444,7 @@ def main():
         before=before,
         after=after,
         failure_reason=failure_reason,
+        context_usage=context_usage,
     )
 
     save_json_run_report(
@@ -417,6 +459,7 @@ def main():
         before=before,
         after=after,
         failure_reason=failure_reason,
+        context_usage=context_usage,
     )
 
     if failure_reason is not None:
