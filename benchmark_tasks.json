@@ -1,0 +1,23 @@
+{
+  "tasks": [
+    {
+      "name": "fix-addition",
+      "prompt": "检查当前项目，修复加法函数，使全部测试通过。不要修改测试文件。",
+      "files": {
+        "calculator.py": "def add(a, b):\n    return a - b\n",
+        "test_calculator.py": "from calculator import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n"
+      },
+      "allow_edit": true,
+      "max_steps": 8
+    },
+    {
+      "name": "create-text-normalizer",
+      "prompt": "检查失败测试，创建缺失的文本处理模块，使全部测试通过。不要修改测试文件。",
+      "files": {
+        "test_text_utils.py": "from text_utils import normalize_name\n\n\ndef test_normalize_name():\n    assert normalize_name(\"  Ada   Lovelace \") == \"ada-lovelace\"\n"
+      },
+      "allow_edit": true,
+      "max_steps": 8
+    }
+  ]
+}

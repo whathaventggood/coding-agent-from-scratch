@@ -85,6 +85,19 @@ pytest，并显示相对任务开始基线的文件级变化。复验失败时�
 并列出每次运行的简要结果。没有 `context_usage` 的旧 JSON 仍可读取，但会
 明确显示上下文指标不可用。该入口只读取已有记录，不会再次请求模型。
 
+## 运行固定任务集评测
+
+配置 `DEEPSEEK_API_KEY` 后，可以自动在临时 Git 工作区中依次运行固定任务，
+保存每个任务的 JSON 报告，并生成汇总结果：
+```bash
+.venv/bin/python run_benchmark.py \
+  benchmark_tasks.json \
+  --output-dir /tmp/coding-agent-benchmark-001
+```
+--output-dir 必须指向一个尚不存在的目录，避免覆盖以前的评测结果。
+每个任务使用独立的临时工作区，任务结束后自动清理；逐任务报告和
+summary.json 会保留在输出目录中。该命令会产生真实模型 API 请求。
+
 可用 `--max-steps 8` 调整模型请求次数。编辑任务开始前，CLI 会记录 Git
 可见文件的内容基线；任务结束后只报告相对该基线新增、修改或删除的文件。运行前已有且本次未继续变化的改动不会被列为本次变化。非
 Git 工作区仍可运行 Agent，但报告会明确说明无法进行 Git 基线归因。
