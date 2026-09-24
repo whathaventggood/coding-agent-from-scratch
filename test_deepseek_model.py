@@ -208,6 +208,7 @@ def test_read_loop_runs_tests_with_trusted_workspace(tmp_path, monkeypatch):
                 "search_file",
                 "search_workspace",
                 "list_python_symbols",
+                "find_python_imports",
                 "run_tests",
                 "inspect_git_changes",
             }
@@ -282,6 +283,7 @@ def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
                 "search_file",
                 "search_workspace",
                 "list_python_symbols",
+                "find_python_imports",
                 "run_tests",
                 "run_test_file",
                 "edit_file",

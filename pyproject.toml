@@ -31,5 +31,6 @@ py-modules = [
     "file_tools",
     "main",
     "models",
+    "repo_context",
     "run_benchmark",
 ]

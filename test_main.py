@@ -6,6 +6,7 @@ from file_tools import (
 import subprocess
 import json
 import file_tools
+import repo_context
 from command_tool import run_tests
 
 
@@ -1134,6 +1135,121 @@ def test_python_symbols_rejects_invalid_filter_and_bounds_output(tmp_path):
         str(tmp_path), keyword=""
     ) == ToolResult(
         "keyword必须是非空字符串", is_error=True
+    )
+
+
+def test_python_import_relations_are_local_and_paged(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    package = workspace / "pkg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "core.py").write_text(
+        "def run(): pass\n", encoding="utf-8"
+    )
+    (package / "api.py").write_text(
+        "from . import core\n"
+        "from pkg.core import run\n"
+        "import os\n",
+        encoding="utf-8",
+    )
+    (workspace / "consumer.py").write_text(
+        "from pkg import api\n", encoding="utf-8"
+    )
+    (workspace / "src").mkdir()
+    (workspace / "src/service.py").write_text(
+        "import pkg.api\n", encoding="utf-8"
+    )
+    (workspace / "build").mkdir()
+    (workspace / "build/ignored.py").write_text(
+        "import pkg.api\n", encoding="utf-8"
+    )
+    (tmp_path / "outside.py").write_text(
+        "import pkg.api\n", encoding="utf-8"
+    )
+    (workspace / "linked.py").symlink_to(tmp_path / "outside.py")
+    monkeypatch.setattr(repo_context, "MAX_IMPORT_RELATIONS", 1)
+
+    def request(path, direction="imports", offset=0):
+        return handle_request(
+            json.dumps({
+                "name": "find_python_imports",
+                "arguments": {
+                    "path": path,
+                    "direction": direction,
+                    "offset": offset,
+                },
+            }),
+            workspace_root=str(workspace),
+        )
+
+    assert request("pkg/api.py") == ToolResult(
+        "pkg/api.py:1: imports pkg/core.py\n"
+        "[还有更多导入关系：保持 path 和 direction 不变，下次传 offset=1]"
+    )
+    assert request("pkg/api.py", offset=1) == ToolResult(
+        "pkg/api.py:2: imports pkg/core.py"
+    )
+    assert request("pkg/api.py", "imported_by") == ToolResult(
+        "consumer.py:1: imports pkg/api.py\n"
+        "[还有更多导入关系：保持 path 和 direction 不变，下次传 offset=1]"
+    )
+    assert request("pkg/api.py", "imported_by", 1) == ToolResult(
+        "src/service.py:1: imports pkg/api.py"
+    )
+    assert request("../outside.py") == ToolResult(
+        "路径超出工作区", is_error=True
+    )
+    assert request("pkg/api.py", direction="unknown") == ToolResult(
+        "direction必须是imports或imported_by", is_error=True
+    )
+    assert request("pkg/api.py", offset=True) == ToolResult(
+        "offset必须是非负整数", is_error=True
+    )
+
+
+def test_python_import_relations_support_src_layout_and_skip_bad_files(
+        tmp_path,
+):
+    workspace = tmp_path / "workspace"
+    package = workspace / "src/local"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "tools.py").write_text(
+        "def run(): pass\n", encoding="utf-8"
+    )
+    (package / "worker.py").write_text(
+        "from local.tools import run\n",
+        encoding="utf-8",
+    )
+    (package / "sub").mkdir()
+    (package / "sub/__init__.py").write_text("", encoding="utf-8")
+    (package / "sub/nested.py").write_text(
+        "from .. import tools\n", encoding="utf-8"
+    )
+    (workspace / "bad.py").write_text(
+        "from local.tools import (\n", encoding="utf-8"
+    )
+
+    result = handle_request(
+        json.dumps({
+            "name": "find_python_imports",
+            "arguments": {"path": "src/local/worker.py"},
+        }),
+        workspace_root=str(workspace),
+    )
+    assert result == ToolResult(
+        "src/local/worker.py:1: imports src/local/tools.py"
+    )
+    assert repo_context.find_python_imports(
+        "src/local/sub/nested.py", str(workspace)
+    ) == ToolResult(
+        "src/local/sub/nested.py:1: imports src/local/tools.py"
+    )
+    assert repo_context.find_python_imports(
+        "bad.py", str(workspace)
+    ) == ToolResult(
+        "文件未被索引（可能位于跳过目录、过大或无法解析）",
+        is_error=True,
     )
 
 

@@ -255,6 +255,38 @@ LIST_PYTHON_SYMBOLS_TOOL = {
     },
 }
 
+FIND_PYTHON_IMPORTS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "find_python_imports",
+        "description": (
+            "静态查找指定 Python 文件直接导入的本地模块，"
+            "或直接导入它的文件；只解析 import 语句，不执行代码"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "工作区内的 Python 文件路径",
+                },
+                "direction": {
+                    "type": "string",
+                    "enum": ["imports", "imported_by"],
+                    "description": "imports 查本文件依赖；imported_by 查直接导入者",
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "可选；填上一页提示的 offset 继续",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 INSPECT_GIT_CHANGES_TOOL = {
     "type": "function",
     "function": {
@@ -494,6 +526,7 @@ def read_file_and_answer(
             SEARCH_FILE_TOOL,
             SEARCH_WORKSPACE_TOOL,
             LIST_PYTHON_SYMBOLS_TOOL,
+            FIND_PYTHON_IMPORTS_TOOL,
             RUN_TESTS_TOOL,
             INSPECT_GIT_CHANGES_TOOL,
         ])
@@ -503,6 +536,7 @@ def read_file_and_answer(
             "run_tests",
             "search_workspace",
             "list_python_symbols",
+            "find_python_imports",
             "inspect_git_changes",
         })
 

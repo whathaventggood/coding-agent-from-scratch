@@ -18,6 +18,7 @@ from file_tools import (
     rename_file,
     delete_file,
 )
+from repo_context import find_python_imports
 
 
 def resolve_workspace_path(path: str, workspace_root: str) -> str | None:
@@ -47,6 +48,7 @@ def dispatch(
         max_lines: int | None = None,
         start_after: str | None = None,
         offset: int = 0,
+        direction: str = "imports",
         content: str | None = None,
         destination: str | None = None,
         verification_profile: str = "pytest",
@@ -60,6 +62,7 @@ def dispatch(
         "create_directory",
         "search_workspace",
         "list_python_symbols",
+        "find_python_imports",
         "rename_file",
         "delete_file",
     }
@@ -160,6 +163,16 @@ def dispatch(
 
     elif tool_name == "list_python_symbols":
         return list_python_symbols(path, keyword=keyword, offset=offset)
+
+    elif tool_name == "find_python_imports":
+        if workspace_root is None:
+            return ToolResult("缺少受信工作区", is_error=True)
+        return find_python_imports(
+            path,
+            workspace_root,
+            direction=direction,
+            offset=offset,
+        )
 
     elif tool_name == "edit_file":
         if old_text is None:
@@ -303,6 +316,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
     max_lines = None
     start_after = None
     offset = 0
+    direction = "imports"
 
     if name == "list_files":
         start_after = arguments.get("start_after")
@@ -313,7 +327,9 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
             if not start_after:
                 return {"error": "start_after不能为空"}
 
-    if name in {"search_workspace", "list_python_symbols"}:
+    if name in {
+            "search_workspace", "list_python_symbols", "find_python_imports"
+    }:
         offset = arguments.get("offset", 0)
 
         if type(offset) is not int or offset < 0:
@@ -360,6 +376,11 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
         ):
             return {"error": "keyword必须是非空字符串"}
 
+    if name == "find_python_imports":
+        direction = arguments.get("direction", "imports")
+        if direction not in ("imports", "imported_by"):
+            return {"error": "direction必须是imports或imported_by"}
+
     old_text = None
     new_text = None
 
@@ -392,6 +413,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
         max_lines=max_lines,
         start_after=start_after,
         offset=offset,
+        direction=direction,
         content=content,
         destination=destination,
     )
@@ -422,6 +444,7 @@ def handle_request(
         max_lines=result.max_lines,
         start_after=result.start_after,
         offset=result.offset,
+        direction=result.direction,
         content=result.content,
         destination=result.destination,
         verification_profile=verification_profile,

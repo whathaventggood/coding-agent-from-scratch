@@ -18,6 +18,7 @@ class ToolRequest:
     max_lines: int | None = None
     start_after: str | None = None
     offset: int = 0
+    direction: str = "imports"
     content: str | None = None
     destination: str | None = None
 
