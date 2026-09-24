@@ -1,10 +1,12 @@
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
 import sys
 import tempfile
 import argparse
+from command_tool import build_verification_command
 from evaluate_reports import (
     print_evaluation_summary,
     summarize_reports,
@@ -19,6 +21,8 @@ ALLOWED_TASK_FIELDS = {
     "allow_edit",
     "max_steps",
     "verification_profile",
+    "protected_files",
+    "holdout_files",
 }
 
 
@@ -71,6 +75,8 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
             "verification_profile",
             "pytest",
         )
+        protected_files = task.get("protected_files", [])
+        holdout_files = task.get("holdout_files", {})
 
         if (
                 not isinstance(name, str)
@@ -137,6 +143,48 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
                 f"必须是以下值之一：{choices}"
             )
 
+        if (
+                not isinstance(protected_files, list)
+                or any(
+                    not isinstance(item, str)
+                    or item not in normalized_files
+                    for item in protected_files
+                )
+                or len(set(protected_files)) != len(protected_files)
+        ):
+            raise ValueError(
+                f"任务 {name} 的 protected_files "
+                "必须是不重复的现有任务文件路径列表"
+            )
+
+        if not isinstance(holdout_files, dict):
+            raise ValueError(
+                f"任务 {name} 的 holdout_files 必须是对象"
+            )
+
+        for relative_path, content in holdout_files.items():
+            path = Path(relative_path)
+            if (
+                    not isinstance(relative_path, str)
+                    or not relative_path
+                    or not isinstance(content, str)
+                    or path.is_absolute()
+                    or len(path.parts) != 1
+                    or ".." in path.parts
+                    or not path.name.startswith("test_")
+                    or path.suffix != ".py"
+                    or path in {
+                        Path(visible_path)
+                        for visible_path in normalized_files
+                    }
+            ):
+                raise ValueError(
+                    f"任务 {name} 的 holdout_files "
+                    "路径必须是根目录下独立的 test_*.py，"
+                    "且不得与可见文件重复，"
+                    "内容必须是文本"
+                )
+
         seen_names.add(name)
         normalized_tasks.append({
             "name": name,
@@ -145,6 +193,8 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
             "allow_edit": allow_edit,
             "max_steps": max_steps,
             "verification_profile": verification_profile,
+            "protected_files": protected_files,
+            "holdout_files": holdout_files,
         })
 
     return normalized_tasks
@@ -253,6 +303,121 @@ def build_cli_command(
     return command
 
 
+def has_symlink_component(
+        workspace: Path,
+        relative_path: str,
+) -> bool:
+    parts = Path(relative_path).parts
+    return any(
+        workspace.joinpath(*parts[:index]).is_symlink()
+        for index in range(1, len(parts) + 1)
+    )
+
+
+def verify_benchmark_guard(
+        task: dict,
+        workspace: Path,
+        cli_exit_code: int,
+) -> dict | None:
+    protected_files = task.get("protected_files", [])
+    holdout_files = task.get("holdout_files", {})
+
+    if not protected_files and not holdout_files:
+        return None
+
+    result = {
+        "status": "skipped",
+        "protected_files_unchanged": None,
+        "holdout_status": "skipped",
+        "holdout_exit_code": None,
+        "holdout_output": "",
+    }
+
+    changed_files = []
+
+    for relative_path in protected_files:
+        try:
+            target = resolve_task_file(workspace, relative_path)
+            unchanged = (
+                not has_symlink_component(
+                    workspace, relative_path
+                )
+                and target.is_file()
+                and target.read_bytes()
+                == task["files"][relative_path].encode("utf-8")
+            )
+        except (OSError, ValueError):
+            unchanged = False
+
+        if not unchanged:
+            changed_files.append(relative_path)
+
+    result["protected_files_unchanged"] = not changed_files
+
+    if changed_files:
+        result["status"] = "failed"
+        result["holdout_output"] = (
+            "受保护文件发生变化：" + ", ".join(changed_files)
+        )
+        return result
+
+    if cli_exit_code != 0:
+        result["holdout_output"] = "CLI 未成功，留出测试未执行"
+        return result
+
+    if not holdout_files:
+        result["status"] = "passed"
+        result["holdout_status"] = "not_configured"
+        return result
+
+    for relative_path, content in holdout_files.items():
+        try:
+            if has_symlink_component(workspace, relative_path):
+                raise ValueError("留出测试路径包含符号链接")
+            target = resolve_task_file(workspace, relative_path)
+            if target.exists() or target.is_symlink():
+                raise ValueError("留出测试目标已被占用")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+        except (OSError, ValueError) as error:
+            result["status"] = "failed"
+            result["holdout_status"] = "failed"
+            result["holdout_output"] = (
+                f"无法加入留出测试 {relative_path}：{error}"
+            )
+            return result
+
+    try:
+        with tempfile.TemporaryDirectory(
+                prefix="agent-holdout-pycache-"
+        ) as cache_directory:
+            check = subprocess.run(
+                build_verification_command(
+                    task["verification_profile"]
+                ),
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                shell=False,
+                env={
+                    **os.environ,
+                    "PYTHONPYCACHEPREFIX": cache_directory,
+                },
+            )
+        passed = check.returncode == 0
+        result["holdout_exit_code"] = check.returncode
+        output = (check.stdout + check.stderr)[:2000]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        passed = False
+        output = f"留出测试无法完成：{error}"
+
+    result["status"] = "passed" if passed else "failed"
+    result["holdout_status"] = result["status"]
+    result["holdout_output"] = output
+    return result
+
+
 def run_benchmark_task(
         task: dict,
         report_path: Path,
@@ -286,6 +451,29 @@ def run_benchmark_task(
             text=True,
         )
 
+        guard = verify_benchmark_guard(
+            task,
+            workspace,
+            result.returncode,
+        )
+
+        if guard is not None and report_path.is_file():
+            report = json.loads(
+                report_path.read_text(encoding="utf-8")
+            )
+            report["benchmark_guard"] = guard
+            report["benchmark_status"] = (
+                "success"
+                if result.returncode == 0
+                and guard["status"] == "passed"
+                else "failure"
+            )
+            report_path.write_text(
+                json.dumps(report, ensure_ascii=False, indent=2)
+                + "\n",
+                encoding="utf-8",
+            )
+
         print(f"\n=== 任务 {task['name']} ===")
 
         if result.stdout:
@@ -294,11 +482,20 @@ def run_benchmark_task(
         if result.stderr:
             print(result.stderr, end="")
 
-        print(
-            f"任务退出码：{result.returncode}"
-        )
+        if guard is not None:
+            print(
+                "评测守门："
+                f"{guard['status']}"
+                f" | 留出测试：{guard['holdout_status']}"
+            )
+            if guard["holdout_output"] and guard["status"] != "passed":
+                print(guard["holdout_output"])
 
-        return result.returncode
+        task_exit_code = result.returncode
+        if guard is not None and guard["status"] != "passed":
+            task_exit_code = 1
+        print(f"任务退出码：{task_exit_code}")
+        return task_exit_code
 
 
 def run_benchmark_suite(

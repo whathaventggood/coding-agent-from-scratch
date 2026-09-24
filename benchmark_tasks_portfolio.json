@@ -7,6 +7,10 @@
         "pricing.py": "def final_price(cents, discount_percent):\n    if cents < 0 or not 0 <= discount_percent <= 100:\n        raise ValueError('invalid price or discount')\n    return cents - cents * discount_percent // 100\n",
         "test_pricing.py": "import pytest\nfrom pricing import final_price\n\n\ndef test_discount_rounds_down_final_price():\n    assert final_price(101, 50) == 50\n\n\ndef test_no_discount():\n    assert final_price(101, 0) == 101\n\n\ndef test_invalid_discount():\n    with pytest.raises(ValueError):\n        final_price(100, 120)\n"
       },
+      "protected_files": ["test_pricing.py"],
+      "holdout_files": {
+        "test_holdout_pricing.py": "from pricing import final_price\n\n\ndef test_non_divisible_discount():\n    assert final_price(199, 33) == 133\n"
+      },
       "allow_edit": true,
       "max_steps": 10,
       "verification_profile": "pytest"
@@ -17,6 +21,10 @@
       "files": {
         "paging.py": "def page(items, page_number, page_size):\n    if page_number < 1 or page_size < 1:\n        raise ValueError('page_number and page_size must be positive')\n    start = page_number * page_size\n    return items[start:start + page_size]\n",
         "test_paging.py": "import pytest\nfrom paging import page\n\n\ndef test_first_page():\n    assert page(list(range(7)), 1, 3) == [0, 1, 2]\n\n\ndef test_last_partial_page():\n    assert page(list(range(7)), 3, 3) == [6]\n\n\ndef test_invalid_page():\n    with pytest.raises(ValueError):\n        page([], 0, 3)\n"
+      },
+      "protected_files": ["test_paging.py"],
+      "holdout_files": {
+        "test_holdout_paging.py": "import pytest\nfrom paging import page\n\n\ndef test_page_after_end_is_empty():\n    assert page([1, 2], 3, 2) == []\n\n\ndef test_zero_page_size_is_rejected():\n    with pytest.raises(ValueError):\n        page([1], 1, 0)\n"
       },
       "allow_edit": true,
       "max_steps": 10,
@@ -29,16 +37,24 @@
         "config.py": "def resolve_config(file_values, env_values):\n    result = dict(env_values)\n    result.update(file_values)\n    return result\n",
         "test_config.py": "from config import resolve_config\n\n\ndef test_environment_overrides_file():\n    assert resolve_config({'model': 'base', 'timeout': '30'}, {'model': 'fast'}) == {'model': 'fast', 'timeout': '30'}\n\n\ndef test_empty_environment_value_is_ignored():\n    assert resolve_config({'model': 'base'}, {'model': ''}) == {'model': 'base'}\n"
       },
+      "protected_files": ["test_config.py"],
+      "holdout_files": {
+        "test_holdout_config.py": "from config import resolve_config\n\n\ndef test_environment_only_key():\n    assert resolve_config({'model': 'base'}, {'region': 'cn'}) == {'model': 'base', 'region': 'cn'}\n"
+      },
       "allow_edit": true,
       "max_steps": 10,
       "verification_profile": "pytest"
     },
     {
       "name": "fix-workspace-prefix",
-      "prompt": "修复工作区相对路径校验，拒绝同名前缀的兄弟目录及向上越界，同时保留合法子路径。不要修改测试文件。",
+      "prompt": "修复工作区相对路径校验，拒绝绝对路径、同名前缀的兄弟目录及向上越界，同时保留合法子路径。不要修改测试文件。",
       "files": {
         "paths.py": "from pathlib import Path\n\n\ndef resolve_inside(root, relative):\n    root = Path(root).resolve()\n    target = (root / relative).resolve()\n    if not str(target).startswith(str(root)):\n        raise ValueError('outside workspace')\n    return target\n",
         "test_paths.py": "import pytest\nfrom paths import resolve_inside\n\n\ndef test_child_path(tmp_path):\n    assert resolve_inside(tmp_path / 'work', 'src/app.py') == tmp_path / 'work/src/app.py'\n\n\ndef test_sibling_prefix_is_rejected(tmp_path):\n    with pytest.raises(ValueError):\n        resolve_inside(tmp_path / 'work', '../workspace-secret/key.txt')\n\n\ndef test_parent_is_rejected(tmp_path):\n    with pytest.raises(ValueError):\n        resolve_inside(tmp_path / 'work', '../outside.txt')\n"
+      },
+      "protected_files": ["test_paths.py"],
+      "holdout_files": {
+        "test_holdout_paths.py": "import pytest\nfrom paths import resolve_inside\n\n\ndef test_absolute_argument_is_rejected(tmp_path):\n    with pytest.raises(ValueError):\n        resolve_inside(tmp_path / 'work', tmp_path / 'work/src/app.py')\n"
       },
       "allow_edit": true,
       "max_steps": 12,
@@ -49,6 +65,10 @@
       "prompt": "根据现有测试创建缺失的 slug 模块。不要修改测试文件。",
       "files": {
         "test_slug.py": "from slug import slugify\n\n\ndef test_trims_and_collapses_spaces():\n    assert slugify('  Agent   Tools  ') == 'agent-tools'\n\n\ndef test_underscores_are_separators():\n    assert slugify('Agent__Tools') == 'agent-tools'\n\n\ndef test_empty_text():\n    assert slugify('  ') == ''\n"
+      },
+      "protected_files": ["test_slug.py"],
+      "holdout_files": {
+        "test_holdout_slug.py": "from slug import slugify\n\n\ndef test_mixed_separators():\n    assert slugify('A_B C') == 'a-b-c'\n"
       },
       "allow_edit": true,
       "max_steps": 12,
@@ -62,6 +82,10 @@
         "invoice.py": "from orders import subtotal\n\n\ndef total_cents(lines, shipping_cents):\n    return subtotal(lines) - shipping_cents\n",
         "test_invoice.py": "import pytest\nfrom invoice import total_cents\nfrom orders import subtotal\n\n\ndef test_subtotal():\n    assert subtotal([{'quantity': 2, 'unit_cents': 150}]) == 300\n\n\ndef test_shipping_is_added_once():\n    assert total_cents([{'quantity': 2, 'unit_cents': 150}], 40) == 340\n\n\ndef test_empty_order():\n    assert total_cents([], 40) == 40\n"
       },
+      "protected_files": ["test_invoice.py"],
+      "holdout_files": {
+        "test_holdout_invoice.py": "from invoice import total_cents\n\n\ndef test_multiple_lines_without_shipping():\n    lines = [{'quantity': 2, 'unit_cents': 120}, {'quantity': 1, 'unit_cents': 35}]\n    assert total_cents(lines, 0) == 275\n"
+      },
       "allow_edit": true,
       "max_steps": 12,
       "verification_profile": "pytest"
@@ -73,6 +97,10 @@
         "events.py": "def unique_event_ids(events):\n    return sorted({event['id'] for event in events})\n",
         "test_events.py": "import unittest\nfrom events import unique_event_ids\n\n\nclass EventTests(unittest.TestCase):\n    def test_keeps_first_seen_order(self):\n        events = [{'id': 'z'}, {'id': 'a'}, {'id': 'z'}, {'id': 'b'}]\n        self.assertEqual(unique_event_ids(events), ['z', 'a', 'b'])\n\n    def test_empty(self):\n        self.assertEqual(unique_event_ids([]), [])\n"
       },
+      "protected_files": ["test_events.py"],
+      "holdout_files": {
+        "test_holdout_events.py": "import unittest\nfrom events import unique_event_ids\n\n\nclass HoldoutEventTests(unittest.TestCase):\n    def test_numeric_ids_keep_first_seen_order(self):\n        events = [{'id': 3}, {'id': 1}, {'id': 3}, {'id': 2}]\n        self.assertEqual(unique_event_ids(events), [3, 1, 2])\n"
+      },
       "allow_edit": true,
       "max_steps": 12,
       "verification_profile": "unittest"
@@ -83,6 +111,10 @@
       "files": {
         "records.py": "def valid_records(records):\n    return [item for item in records if item.get('name') and isinstance(item.get('age'), int)]\n",
         "test_records.py": "from records import valid_records\n\n\ndef test_filters_invalid_records():\n    records = [\n        {'name': 'Ada', 'age': 20},\n        {'name': '', 'age': 30},\n        {'name': 'Bob', 'age': -1},\n        {'name': 'Eve', 'age': True},\n        {'name': 'Lin', 'age': 0},\n    ]\n    assert valid_records(records) == [records[0], records[4]]\n\n\ndef test_missing_fields():\n    assert valid_records([{}, {'name': 'Ada'}]) == []\n"
+      },
+      "protected_files": ["test_records.py"],
+      "holdout_files": {
+        "test_holdout_records.py": "from records import valid_records\n\n\ndef test_false_age_is_not_an_integer_age():\n    records = [{'name': 'Ada', 'age': False}, {'name': 'Lin', 'age': 0}]\n    assert valid_records(records) == [records[1]]\n"
       },
       "allow_edit": true,
       "max_steps": 12,

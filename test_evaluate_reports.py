@@ -11,6 +11,8 @@ from run_benchmark import (
     build_cli_command,
     load_benchmark_tasks,
     prepare_task_workspace,
+    verify_benchmark_guard,
+    run_benchmark_task,
     run_benchmark_suite,
 )
 
@@ -223,6 +225,8 @@ def test_portfolio_tasks_start_with_failing_verification(tmp_path):
 
     assert len(tasks) == 8
     assert all(task["allow_edit"] for task in tasks)
+    assert all(task["protected_files"] for task in tasks)
+    assert all(task["holdout_files"] for task in tasks)
 
     for task in tasks:
         workspace = tmp_path / task["name"]
@@ -237,6 +241,243 @@ def test_portfolio_tasks_start_with_failing_verification(tmp_path):
             timeout=30,
         )
         assert result.returncode != 0, task["name"]
+
+
+def test_benchmark_guard_checks_hidden_tests_after_agent(tmp_path):
+    task = {
+        "name": "guard-example",
+        "files": {
+            "maths.py": "def double(value):\n    return value\n",
+            "test_maths.py": (
+                "from maths import double\n\n"
+                "def test_two():\n    assert double(2) == 4\n"
+            ),
+        },
+        "protected_files": ["test_maths.py"],
+        "holdout_files": {
+            "test_holdout_maths.py": (
+                "from maths import double\n\n"
+                "def test_three():\n    assert double(3) == 6\n"
+            ),
+        },
+        "verification_profile": "pytest",
+    }
+    workspace = tmp_path / "workspace"
+    prepare_task_workspace(task, workspace)
+    assert not (workspace / "test_holdout_maths.py").exists()
+    skipped = verify_benchmark_guard(task, workspace, 1)
+    assert skipped["status"] == "skipped"
+    assert skipped["protected_files_unchanged"] is True
+    assert not (workspace / "test_holdout_maths.py").exists()
+
+    # 可见测试能过，但只硬编码一个输入会被结束后加入的测试识别。
+    (workspace / "maths.py").write_text(
+        "def double(value):\n    return 4\n",
+        encoding="utf-8",
+    )
+    guard = verify_benchmark_guard(task, workspace, 0)
+    assert guard["status"] == "failed"
+    assert guard["holdout_status"] == "failed"
+
+    (workspace / "maths.py").write_text(
+        "def double(value):\n    return value * 2\n",
+        encoding="utf-8",
+    )
+    (workspace / "test_holdout_maths.py").unlink()
+    guard = verify_benchmark_guard(task, workspace, 0)
+    assert guard["status"] == "passed"
+    assert guard["protected_files_unchanged"] is True
+
+
+def test_benchmark_guard_rejects_modified_visible_test(tmp_path):
+    task = {
+        "name": "test-edit",
+        "files": {
+            "test_math.py": "def test_real():\n    assert False\n",
+        },
+        "protected_files": ["test_math.py"],
+        "holdout_files": {
+            "test_holdout.py": "def test_other():\n    assert True\n",
+        },
+        "verification_profile": "pytest",
+    }
+    workspace = tmp_path / "workspace"
+    prepare_task_workspace(task, workspace)
+    (workspace / "test_math.py").write_text(
+        "def test_real():\n    assert True\n",
+        encoding="utf-8",
+    )
+
+    guard = verify_benchmark_guard(task, workspace, 0)
+    assert guard["status"] == "failed"
+    assert guard["protected_files_unchanged"] is False
+    assert not (workspace / "test_holdout.py").exists()
+
+    (workspace / "test_math.py").unlink()
+    (workspace / "replacement.py").write_text(
+        task["files"]["test_math.py"],
+        encoding="utf-8",
+    )
+    (workspace / "test_math.py").symlink_to("replacement.py")
+    guard = verify_benchmark_guard(task, workspace, 0)
+    assert guard["status"] == "failed"
+    assert guard["protected_files_unchanged"] is False
+
+
+@pytest.mark.parametrize(
+    "holdout_path",
+    [
+        "../outside.py",
+        "/tmp/outside.py",
+        "test_visible.py",
+        "./test_visible.py",
+        "tests/test_holdout.py",
+        "holdout.py",
+    ],
+)
+def test_benchmark_manifest_rejects_unsafe_holdout_path(
+        tmp_path,
+        holdout_path,
+):
+    manifest = tmp_path / "tasks.json"
+    manifest.write_text(json.dumps({
+        "tasks": [{
+            "name": "unsafe-holdout",
+            "prompt": "fix",
+            "files": {"test_visible.py": "def test_a(): pass\n"},
+            "protected_files": ["test_visible.py"],
+            "holdout_files": {holdout_path: "def test_b(): pass\n"},
+        }],
+    }), encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        load_benchmark_tasks(manifest)
+
+
+def test_benchmark_summary_counts_guard_failure_as_failure(tmp_path):
+    report_path = tmp_path / "report.json"
+    write_report(report_path, {
+        "status": "success",
+        "benchmark_status": "failure",
+        "benchmark_guard": {
+            "status": "failed",
+            "protected_files_unchanged": False,
+            "holdout_status": "skipped",
+            "holdout_output": "test changed",
+        },
+        "tool_trace": [],
+        "verification": {"is_error": False},
+        "workspace_changes": None,
+    })
+
+    summary = summarize_reports([report_path])
+    assert summary["successful_runs"] == 0
+    assert summary["guard_failed_runs"] == 1
+    assert summary["verification_passed_runs"] == 1
+    assert summary["runs"][0]["agent_status"] == "success"
+    assert summary["runs"][0]["status"] == "failure"
+
+
+def test_benchmark_runner_records_guard_result_without_model(
+        tmp_path,
+        monkeypatch,
+):
+    task = {
+        "name": "runner-example",
+        "files": {
+            "maths.py": "def double(value):\n    return value\n",
+            "test_maths.py": (
+                "from maths import double\n\n"
+                "def test_two():\n    assert double(2) == 4\n"
+            ),
+        },
+        "protected_files": ["test_maths.py"],
+        "holdout_files": {
+            "test_holdout.py": (
+                "from maths import double\n\n"
+                "def test_three():\n    assert double(3) == 6\n"
+            ),
+        },
+        "verification_profile": "pytest",
+    }
+    report_path = tmp_path / "report.json"
+    agent_report = json.dumps({
+        "status": "success",
+        "tool_trace": [],
+        "verification": {"is_error": False},
+        "workspace_changes": None,
+    })
+    script = (
+        "from pathlib import Path; import sys; "
+        "Path(sys.argv[1]).write_text(sys.argv[3], encoding='utf-8'); "
+        "Path(sys.argv[2]).write_text("
+        "'def double(value):\\n    return value * 2\\n', "
+        "encoding='utf-8')"
+    )
+
+    def fake_command(_task, workspace, output):
+        return [
+            sys.executable, "-c", script,
+            str(output), str(workspace / "maths.py"),
+            agent_report,
+        ]
+
+    monkeypatch.setattr(
+        "run_benchmark.build_cli_command",
+        fake_command,
+    )
+
+    assert run_benchmark_task(task, report_path) == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "success"
+    assert report["benchmark_status"] == "success"
+    assert report["benchmark_guard"]["holdout_status"] == "passed"
+
+
+def test_benchmark_runner_fails_when_agent_edits_test(
+        tmp_path,
+        monkeypatch,
+):
+    task = {
+        "name": "tampered-test",
+        "files": {
+            "test_maths.py": "def test_real():\n    assert False\n",
+        },
+        "protected_files": ["test_maths.py"],
+        "holdout_files": {},
+        "verification_profile": "pytest",
+    }
+    report_path = tmp_path / "report.json"
+    agent_report = json.dumps({
+        "status": "success",
+        "tool_trace": [],
+        "verification": {"is_error": False},
+        "workspace_changes": None,
+    })
+    script = (
+        "from pathlib import Path; import sys; "
+        "Path(sys.argv[1]).write_text(sys.argv[3], encoding='utf-8'); "
+        "Path(sys.argv[2]).write_text("
+        "'def test_real():\\n    assert True\\n', "
+        "encoding='utf-8')"
+    )
+
+    monkeypatch.setattr(
+        "run_benchmark.build_cli_command",
+        lambda _task, workspace, output: [
+            sys.executable, "-c", script,
+            str(output), str(workspace / "test_maths.py"),
+            agent_report,
+        ],
+    )
+
+    assert run_benchmark_task(task, report_path) == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "success"
+    assert report["benchmark_status"] == "failure"
+    assert report["benchmark_guard"][
+        "protected_files_unchanged"
+    ] is False
 
 
 def test_run_benchmark_suite_writes_summary_without_real_model(

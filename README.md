@@ -172,7 +172,14 @@ verification_profile。benchmark 任务也可通过同名字段显式选择方�
   --output-dir /tmp/coding-agent-portfolio-001
 ```
 
-任务测试文件对 Agent 可见，CLI 的独立复验仍运行同一套测试；因此这不是隐藏测试盲测。
+八题的可见测试文件都被评测器锁定：Agent 若修改、删除或用符号链接替换，
+即使 CLI 复验通过也按评测失败计。八题均另有 `holdout_files`，
+只在 Agent 运行和 CLI 独立复验结束后加入临时工作区，再运行一次固定
+`pytest`/`unittest` 方案。逐任务 JSON 分别保留 CLI 原始 `status`、
+评测最终 `benchmark_status` 与 `benchmark_guard`，汇总成功数按评测最终状态计算。
+这能检出部分针对可见测试的过拟合，但留出测试本身保存在公开任务清单中，
+不是私有盲测，也不能证明真实仓库通用成功率。旧两题集没有开启评测守门，
+历史结果口径不变。
 完整仓库上的[可复现修复演示](docs/real-repo-demo.md)使用一个明确标注的合成回归，
 可检查 Agent 修复、全量独立复验和最终 Git 差异。
 

@@ -51,6 +51,31 @@ def load_run_report(path: Path) -> dict:
             f"报告 status 无效：{path}"
         )
 
+    benchmark_status = report.get("benchmark_status")
+    if "benchmark_status" in report and benchmark_status not in {
+            "success", "failure"
+    }:
+        raise ValueError(
+            f"报告 benchmark_status 无效：{path}"
+        )
+
+    if "benchmark_status" in report:
+        guard = report.get("benchmark_guard")
+        expected_status = (
+            "success"
+            if report["status"] == "success"
+            and isinstance(guard, dict)
+            and guard.get("status") == "passed"
+            else "failure"
+        )
+        if (
+                not isinstance(guard, dict)
+                or benchmark_status != expected_status
+        ):
+            raise ValueError(
+                f"报告 benchmark_status 与评测守门不一致：{path}"
+            )
+
     if not isinstance(report["tool_trace"], list):
         raise ValueError(
             f"报告 tool_trace 必须是列表：{path}"
@@ -123,13 +148,39 @@ def summarize_reports(report_paths: list[Path]) -> dict:
     total_history_trims = 0
     total_trimmed_messages = 0
     total_released_history_chars = 0
+    guarded_runs = 0
+    guard_passed_runs = 0
+    guard_failed_runs = 0
+    guard_skipped_runs = 0
 
     for input_path in report_paths:
         path = input_path.expanduser().resolve()
         report = load_run_report(path)
 
-        if report["status"] == "success":
+        status = report.get(
+            "benchmark_status", report["status"]
+        )
+
+        if status == "success":
             successful_runs += 1
+
+        guard = report.get("benchmark_guard")
+        if guard is not None:
+            if (
+                    not isinstance(guard, dict)
+                    or guard.get("status")
+                    not in {"passed", "failed", "skipped"}
+            ):
+                raise ValueError(
+                    f"报告 benchmark_guard 无效：{path}"
+                )
+            guarded_runs += 1
+            if guard["status"] == "passed":
+                guard_passed_runs += 1
+            elif guard["status"] == "failed":
+                guard_failed_runs += 1
+            else:
+                guard_skipped_runs += 1
 
         verification = report["verification"]
 
@@ -202,7 +253,13 @@ def summarize_reports(report_paths: list[Path]) -> dict:
         runs.append({
             "path": str(path),
             "task": report.get("task", ""),
-            "status": report["status"],
+            "status": status,
+            "agent_status": report["status"],
+            "guard_status": (
+                guard["status"]
+                if guard is not None
+                else "not_configured"
+            ),
             "verification": verification_status,
             "tool_calls": tool_calls,
             "failed_tool_calls": tool_errors,
@@ -221,6 +278,10 @@ def summarize_reports(report_paths: list[Path]) -> dict:
         "total_runs": total_runs,
         "successful_runs": successful_runs,
         "failed_runs": total_runs - successful_runs,
+        "guarded_runs": guarded_runs,
+        "guard_passed_runs": guard_passed_runs,
+        "guard_failed_runs": guard_failed_runs,
+        "guard_skipped_runs": guard_skipped_runs,
         "verification_passed_runs": verification_passed_runs,
         "verification_failed_runs": verification_failed_runs,
         "verification_skipped_runs": verification_skipped_runs,
@@ -261,6 +322,14 @@ def print_evaluation_summary(summary: dict) -> None:
         f" | 失败 {summary['verification_failed_runs']}"
         f" | 未执行 {summary['verification_skipped_runs']}"
     )
+    if summary["guarded_runs"]:
+        print(
+            "评测守门："
+            f"通过 {summary['guard_passed_runs']}"
+            f" | 失败 {summary['guard_failed_runs']}"
+            f" | 跳过 {summary['guard_skipped_runs']}"
+            f" | 未配置 {total_runs - summary['guarded_runs']}"
+        )
     print(
         f"工具调用：{summary['total_tool_calls']}"
         f" | 工具错误：{summary['failed_tool_calls']}"
@@ -302,7 +371,9 @@ def print_evaluation_summary(summary: dict) -> None:
         print(
             f"- {run['path']}"
             f" | {run['status']}"
+            f" | agent={run['agent_status']}"
             f" | verification={run['verification']}"
+            f" | guard={run['guard_status']}"
             f" | tools={run['tool_calls']}"
             f" | tool_errors={run['failed_tool_calls']}"
             f" | changes={run['file_changes']}"
