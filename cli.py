@@ -3,6 +3,7 @@ import hashlib
 import os
 import subprocess
 import json
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from deepseek_model import read_file_and_answer
@@ -19,7 +20,16 @@ MISSING_FILE = "<missing>"
 class WorkspaceSnapshot:
     is_git_repository: bool
     files: dict[str, str]
+    file_contents: dict[str, bytes]
+    file_modes: dict[str, int]
     message: str | None = None
+
+
+@dataclass
+class RollbackResult:
+    restored_paths: list[str]
+    removed_paths: list[str]
+    error: str | None = None
 
 
 def fingerprint_file(path: Path) -> str:
@@ -54,6 +64,8 @@ def capture_workspace_snapshot(workspace: Path) -> WorkspaceSnapshot:
         return WorkspaceSnapshot(
             is_git_repository=False,
             files={},
+            file_contents={},
+            file_modes={},
             message="未找到 Git，无法记录 Git 基线",
         )
 
@@ -64,6 +76,8 @@ def capture_workspace_snapshot(workspace: Path) -> WorkspaceSnapshot:
         return WorkspaceSnapshot(
             is_git_repository=False,
             files={},
+            file_contents={},
+            file_modes={},
             message="工作区不是 Git 仓库，无法记录 Git 基线",
         )
 
@@ -88,19 +102,39 @@ def capture_workspace_snapshot(workspace: Path) -> WorkspaceSnapshot:
         return WorkspaceSnapshot(
             is_git_repository=False,
             files={},
+            file_contents={},
+            file_modes={},
             message="无法读取 Git 文件清单",
         )
 
     files = {}
+    file_contents = {}
+    file_modes = {}
+
     for relative_path in file_list.stdout.split("\0"):
         if not relative_path:
             continue
 
-        files[relative_path] = fingerprint_file(workspace / relative_path)
+        file_path = workspace / relative_path
+        files[relative_path] = fingerprint_file(file_path)
+
+        if file_path.is_symlink():
+            continue
+
+        try:
+            if file_path.is_file():
+                file_contents[relative_path] = file_path.read_bytes()
+                file_modes[relative_path] = stat.S_IMODE(
+                    file_path.stat().st_mode
+                )
+        except OSError:
+            continue
 
     return WorkspaceSnapshot(
         is_git_repository=True,
         files=files,
+        file_contents=file_contents,
+        file_modes=file_modes,
     )
 
 
@@ -143,6 +177,162 @@ def find_workspace_changes(
     return changes
 
 
+def rollback_workspace_changes(
+        workspace: Path,
+        before: WorkspaceSnapshot,
+        after: WorkspaceSnapshot,
+) -> RollbackResult:
+    changes = find_workspace_changes(before, after)
+
+    if changes is None:
+        return RollbackResult(
+            restored_paths=[],
+            removed_paths=[],
+            error=(
+                "无法安全回滚："
+                f"{before.message or after.message}"
+            ),
+        )
+
+    paths_to_restore = sorted(
+        changes["modified"] + changes["deleted"]
+    )
+    paths_to_remove = sorted(changes["created"])
+    unsupported_paths = []
+
+    for relative_path in paths_to_restore:
+        target = workspace / relative_path
+
+        if (
+                relative_path not in before.file_contents
+                or relative_path not in before.file_modes
+                or not target.parent.is_dir()
+                or target.is_symlink()
+                or (
+                target.exists()
+                and not target.is_file()
+        )
+        ):
+            unsupported_paths.append(relative_path)
+
+    for relative_path in paths_to_remove:
+        target = workspace / relative_path
+
+        if target.is_symlink() or not target.is_file():
+            unsupported_paths.append(relative_path)
+
+    if unsupported_paths:
+        return RollbackResult(
+            restored_paths=[],
+            removed_paths=[],
+            error=(
+                    "无法安全回滚以下路径："
+                    + ", ".join(sorted(set(unsupported_paths)))
+            ),
+        )
+
+    restored_paths = []
+    removed_paths = []
+
+    try:
+        for relative_path in paths_to_restore:
+            target = workspace / relative_path
+            target.write_bytes(
+                before.file_contents[relative_path]
+            )
+            target.chmod(
+                before.file_modes[relative_path]
+            )
+            restored_paths.append(relative_path)
+
+        for relative_path in paths_to_remove:
+            target = workspace / relative_path
+            target.unlink()
+            removed_paths.append(relative_path)
+    except OSError as error:
+        return RollbackResult(
+            restored_paths=restored_paths,
+            removed_paths=removed_paths,
+            error=f"回滚文件失败：{error}",
+        )
+
+    return RollbackResult(
+        restored_paths=restored_paths,
+        removed_paths=removed_paths,
+    )
+
+
+def perform_failure_rollback(
+        enabled: bool,
+        workspace: Path,
+        before: WorkspaceSnapshot | None,
+        after: WorkspaceSnapshot | None,
+) -> RollbackResult | None:
+    if not enabled:
+        return None
+
+    if before is None or after is None:
+        return RollbackResult(
+            restored_paths=[],
+            removed_paths=[],
+            error="缺少任务前后快照，无法安全回滚",
+        )
+
+    result = rollback_workspace_changes(
+        workspace,
+        before,
+        after,
+    )
+
+    if result.error is not None:
+        return result
+
+    final_snapshot = capture_workspace_snapshot(workspace)
+    remaining_changes = find_workspace_changes(
+        before,
+        final_snapshot,
+    )
+
+    if (
+            remaining_changes is None
+            or any(remaining_changes.values())
+    ):
+        return RollbackResult(
+            restored_paths=result.restored_paths,
+            removed_paths=result.removed_paths,
+            error="回滚后工作区仍存在本次任务产生的文件变化",
+        )
+
+    return result
+
+
+def print_rollback_result(
+        enabled: bool,
+        result: RollbackResult | None,
+) -> None:
+    print("\n失败恢复：")
+
+    if not enabled:
+        print("未启用")
+        return
+
+    if result is None:
+        print("本次运行未触发回滚")
+        return
+
+    if result.error is not None:
+        print(f"失败：{result.error}")
+        return
+
+    print("成功：Git 可见普通文件已恢复到任务开始时状态")
+
+    for path in result.restored_paths:
+        print(f"- 恢复：{path}")
+
+    for path in result.removed_paths:
+        print(f"- 移除本次新建：{path}")
+
+
 def build_json_run_report(
         task: str,
         workspace: Path,
@@ -156,6 +346,8 @@ def build_json_run_report(
         before: WorkspaceSnapshot | None,
         after: WorkspaceSnapshot | None,
         failure_reason: str | None,
+        rollback_on_failure: bool,
+        rollback_result: RollbackResult | None,
 ) -> dict:
     changes = None
     change_message = None
@@ -182,6 +374,21 @@ def build_json_run_report(
             else "failure"
         ),
         "failure_reason": failure_reason,
+        "rollback_on_failure": rollback_on_failure,
+        "rollback": (
+            None
+            if rollback_result is None
+            else {
+                "status": (
+                    "failure"
+                    if rollback_result.error is not None
+                    else "success"
+                ),
+                "restored_paths": rollback_result.restored_paths,
+                "removed_paths": rollback_result.removed_paths,
+                "error": rollback_result.error,
+            }
+        ),
         "answer": answer,
         "tool_trace": [
             {
@@ -239,6 +446,8 @@ def save_json_run_report(
         before: WorkspaceSnapshot | None,
         after: WorkspaceSnapshot | None,
         failure_reason: str | None,
+        rollback_on_failure: bool,
+        rollback_result: RollbackResult | None,
 ) -> None:
     if report_path is None:
         return
@@ -256,6 +465,8 @@ def save_json_run_report(
         before=before,
         after=after,
         failure_reason=failure_reason,
+        rollback_on_failure=rollback_on_failure,
+        rollback_result=rollback_result,
     )
 
     try:
@@ -379,6 +590,11 @@ def main():
     parser.add_argument("task", help="交给 Agent 的任务")
     parser.add_argument("--workspace", required=True, type=Path, help="受信工作区")
     parser.add_argument("--allow-edit", action="store_true", help="允许修改文件")
+    parser.add_argument(
+        "--rollback-on-failure",
+        action="store_true",
+        help="任务失败时恢复本次产生的 Git 可见普通文件变化",
+    )
     parser.add_argument("--max-steps", type=int, default=8, help="最多请求模型的次数")
     parser.add_argument(
         "--verification-profile",
@@ -400,6 +616,11 @@ def main():
     if args.max_steps < 1:
         parser.error("--max-steps 必须大于 0")
 
+    if args.rollback_on_failure and not args.allow_edit:
+        parser.error(
+            "--rollback-on-failure 必须与 --allow-edit 一起使用"
+        )
+
     report_path = None
 
     if args.report_json is not None:
@@ -414,6 +635,15 @@ def main():
     before = None
     if args.allow_edit:
         before = capture_workspace_snapshot(workspace)  # Agent 动手前先给整个有效工作区的文件内容留个案底（hash）
+
+    if (
+            args.rollback_on_failure
+            and before is not None
+            and not before.is_git_repository
+    ):
+        parser.error(
+            "--rollback-on-failure 需要有效的 Git 工作区"
+        )
 
     tool_trace: list[ToolTraceEntry] = []
     context_usage = ContextUsageStats()
@@ -433,6 +663,13 @@ def main():
         if args.allow_edit:
             after = capture_workspace_snapshot(workspace)
 
+        rollback_result = perform_failure_rollback(
+            enabled=args.rollback_on_failure,
+            workspace=workspace,
+            before=before,
+            after=after,
+        )
+
         print_run_report(
             answer=None,
             tool_trace=tool_trace,
@@ -441,6 +678,11 @@ def main():
             after=after,
             failure_reason=f"模型执行失败：{error}",
             context_usage=context_usage,
+        )
+
+        print_rollback_result(
+            enabled=args.rollback_on_failure,
+            result=rollback_result,
         )
 
         save_json_run_report(
@@ -457,6 +699,8 @@ def main():
             after=after,
             failure_reason=f"模型执行失败：{error}",
             context_usage=context_usage,
+            rollback_on_failure=args.rollback_on_failure,
+            rollback_result=rollback_result,
         )
 
         raise SystemExit(1)
@@ -464,6 +708,7 @@ def main():
     check = None
     after = None
     failure_reason = None
+    rollback_result = None
 
     if args.allow_edit:
         check = run_tests(
@@ -476,6 +721,14 @@ def main():
         if check.is_error:
             failure_reason = "本地独立复验未通过"
 
+    if failure_reason is not None:
+        rollback_result = perform_failure_rollback(
+            enabled=args.rollback_on_failure,
+            workspace=workspace,
+            before=before,
+            after=after,
+        )
+
     print_run_report(
         answer=answer,
         tool_trace=tool_trace,
@@ -484,6 +737,11 @@ def main():
         after=after,
         failure_reason=failure_reason,
         context_usage=context_usage,
+    )
+
+    print_rollback_result(
+        enabled=args.rollback_on_failure,
+        result=rollback_result,
     )
 
     save_json_run_report(
@@ -500,6 +758,8 @@ def main():
         after=after,
         failure_reason=failure_reason,
         context_usage=context_usage,
+        rollback_on_failure=args.rollback_on_failure,
+        rollback_result=rollback_result,
     )
 
     if failure_reason is not None:
