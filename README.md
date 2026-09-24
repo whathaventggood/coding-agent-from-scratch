@@ -29,11 +29,20 @@
 - 在显式开启编辑权限后删除工作区内的普通文件，拒绝删除目录或符号链接
 - 汇总多份 JSON 运行记录，统计成功率、独立复验、工具调用和文件变化
 
-## 安装依赖
+## 安装与运行
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/coding-agent --help
 ```
+
+安装后可在其他目录使用 `.venv/bin/coding-agent`、
+`.venv/bin/coding-agent-evaluate` 和 `.venv/bin/coding-agent-benchmark`。
+开发环境使用 `.venv/bin/python -m pip install -r requirements-dev.txt`，
+依赖版本统一定义在 `pyproject.toml`。Python 需要 3.11 或更新版本。
+GitHub Actions 在 Python 3.11 和 3.14 上安装项目、运行离线测试并检查三个命令入口；
+这些检查不需要 `DEEPSEEK_API_KEY`，也不会发出真实模型请求。
 
 ## 配置 DeepSeek
 

@@ -1,0 +1,33 @@
+name: Python checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install project and test dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run offline regression tests
+        run: python -m pytest -q
+      - name: Check installed commands outside the source directory
+        working-directory: ${{ runner.temp }}
+        run: |
+          coding-agent --help
+          coding-agent-evaluate --help
+          coding-agent-benchmark --help

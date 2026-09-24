@@ -1,2 +1,1 @@
-openai==3.13.0
-httpx2[socks]==2.12.0
+.
