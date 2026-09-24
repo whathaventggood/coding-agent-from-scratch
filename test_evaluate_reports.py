@@ -1,9 +1,11 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
+from command_tool import build_verification_command
 from evaluate_reports import summarize_reports
 from run_benchmark import (
     build_cli_command,
@@ -211,6 +213,30 @@ def test_benchmark_manifest_prepares_clean_git_workspace(
             invalid_task,
             tmp_path / "invalid-workspace",
         )
+
+
+def test_portfolio_tasks_start_with_failing_verification(tmp_path):
+    manifest = Path(__file__).with_name(
+        "benchmark_tasks_portfolio.json"
+    )
+    tasks = load_benchmark_tasks(manifest)
+
+    assert len(tasks) == 8
+    assert all(task["allow_edit"] for task in tasks)
+
+    for task in tasks:
+        workspace = tmp_path / task["name"]
+        prepare_task_workspace(task, workspace)
+        result = subprocess.run(
+            build_verification_command(
+                task["verification_profile"]
+            ),
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode != 0, task["name"]
 
 
 def test_run_benchmark_suite_writes_summary_without_real_model(

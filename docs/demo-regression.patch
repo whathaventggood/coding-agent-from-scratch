@@ -1,0 +1,9 @@
+diff --git a/file_tools.py b/file_tools.py
+--- a/file_tools.py
++++ b/file_tools.py
+@@ -305,4 +305,4 @@ def replace_text_once(
+-    if match_count > 1:
++    if match_count > 2:
+         return ToolResult(
+             content="待替换文本出现多次",
+             is_error=True,

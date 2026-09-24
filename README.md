@@ -1,6 +1,24 @@
-# 从零实现 Coding Agent
+# Coding Agent Harness：受控执行、独立验证与可复现评测
 
-这是一个用于学习 Python 工程与 Agent 原理的 Coding Agent 项目。
+一个可在**受信本地工作区**运行的命令行 Coding Agent。它把模型的文件操作和测试请求接入受控工具，记录执行轨迹与文件变化，并在模型回答后由 CLI 独立复验。目标是让一次代码修复有可检查的结果，而不只是一句“已完成”。这是个人工程项目和实验环境，**不是恶意代码隔离沙箱**。
+
+```text
+任务与本地权限 → DeepSeek 工具调用 → Agent Loop/上下文管理
+                                      ↓
+                         工作区文件工具 + 固定验证方案
+                                      ↓
+                    CLI 独立复验 → Git 变化/失败恢复 → JSON 报告
+```
+
+### 已验证的证据
+
+- 固定两任务集在预算感知提示前后各运行 5 轮：成功且通过 CLI 独立复验由 **8/10 → 10/10**，模型请求总数由 **62 → 57**；工具错误由 **4 → 5**。这是小样本观察，不证明稳定成功率或因果改善；原始逐任务 JSON 保留在本机，逐轮数据与失败案例见[量化记录](docs/benchmark-report.md)。
+- Python 3.11/3.14 的 GitHub Actions 离线回归与安装后命令检查已通过。真实模型评测与离线测试分开记录；新增功能仍以对应提交的 CI 结果为准。
+- 曾在临时 Git 仓库完成一次真实 `unittest` 修复演示：模型修正源码后，CLI 独立复验通过，报告只归因到源码改动。该单次案例不代表通用修复率。
+
+### 设计边界
+
+编辑权限由本地调用者显式开启；验证命令只从 `pytest`/`unittest` 白名单选择，模型不能传任意 shell 命令。文件路径限制在工作区内，但运行受信仓库的测试仍会执行该仓库的 Python 代码；路径检查与 `shell=False` **不等于沙箱**。失败回滚也只承诺任务开始时 Git 可见的普通文件，详情见下文。
 
 ## 当前功能
 
@@ -142,6 +160,21 @@ verification_profile。benchmark 任务也可通过同名字段显式选择方�
   benchmark_tasks.json \
   --output-dir /tmp/coding-agent-benchmark-001
 ```
+
+`benchmark_tasks.json` 是保留历史对照口径的两题集。新增的
+[`benchmark_tasks_portfolio.json`](benchmark_tasks_portfolio.json) 单独覆盖八种
+修复场景：金额取整、分页边界、配置优先级、路径越界、缺失模块、跨文件调用、
+`unittest` 去重和批量校验。八题的初始状态均已用对应验证方案确认失败，
+但**尚无真实模型成功率数据**；不要与旧两题结果混算。运行新任务集：
+
+```bash
+.venv/bin/coding-agent-benchmark benchmark_tasks_portfolio.json \
+  --output-dir /tmp/coding-agent-portfolio-001
+```
+
+任务测试文件对 Agent 可见，CLI 的独立复验仍运行同一套测试；因此这不是隐藏测试盲测。
+完整仓库上的[可复现修复演示](docs/real-repo-demo.md)使用一个明确标注的合成回归，
+可检查 Agent 修复、全量独立复验和最终 Git 差异。
 
 --output-dir 必须指向一个尚不存在的目录，避免覆盖以前的评测结果。
 每个任务使用独立的临时工作区，任务结束后自动清理；逐任务报告和
