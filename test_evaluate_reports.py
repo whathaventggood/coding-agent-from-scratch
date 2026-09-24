@@ -10,6 +10,7 @@ from evaluate_reports import summarize_reports
 from run_benchmark import (
     build_cli_command,
     load_benchmark_tasks,
+    select_benchmark_tasks,
     prepare_task_workspace,
     verify_benchmark_guard,
     run_benchmark_task,
@@ -535,3 +536,56 @@ def test_run_benchmark_suite_writes_summary_without_real_model(
     assert summary["total_runs"] == 2
     assert summary["successful_runs"] == 1
     assert summary["failed_runs"] == 1
+
+
+def test_select_benchmark_tasks_preserves_manifest_order_and_rejects_typos():
+    tasks = [{"name": "first"}, {"name": "second"}, {"name": "third"}]
+    assert select_benchmark_tasks(tasks, None) == tasks
+    assert select_benchmark_tasks(tasks, ["third", "first"]) == [
+        tasks[0], tasks[2]
+    ]
+    with pytest.raises(ValueError, match="未知任务：missing"):
+        select_benchmark_tasks(tasks, ["missing"])
+    with pytest.raises(ValueError, match="不可重复"):
+        select_benchmark_tasks(tasks, ["first", "first"])
+
+
+def test_benchmark_main_records_selected_tasks_and_manifest_hash(
+        tmp_path, monkeypatch,
+):
+    import hashlib
+    from run_benchmark import main
+
+    manifest = tmp_path / "tasks.json"
+    manifest.write_text(
+        json.dumps({"tasks": [
+            {"name": "first", "prompt": "first", "files": {"x.py": "x = 1"}},
+            {"name": "second", "prompt": "second", "files": {"x.py": "x = 2"}},
+        ]}),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "reports"
+
+    def fake_run_benchmark_task(task, report_path):
+        write_report(report_path, {
+            "task": task["name"], "status": "success", "tool_trace": [],
+            "verification": None, "workspace_changes": None,
+        })
+        return 0
+
+    monkeypatch.setattr("run_benchmark.run_benchmark_task", fake_run_benchmark_task)
+    monkeypatch.setattr(sys, "argv", [
+        "run_benchmark.py", str(manifest), "--output-dir", str(output_dir),
+        "--task", "second",
+    ])
+    main()
+    assert (output_dir / "second.json").is_file()
+    assert not (output_dir / "first.json").exists()
+    summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+    assert summary["total_runs"] == 1
+    assert summary["benchmark_run"] == {
+        "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "manifest_task_count": 2,
+        "selected_task_names": ["second"],
+        "selected_task_count": 1,
+    }

@@ -174,6 +174,18 @@ verification_profile。benchmark 任务也可通过同名字段显式选择方�
   --output-dir /tmp/coding-agent-portfolio-001
 ```
 
+想先排查个别场景，可重复使用 `--task` 精确指定清单内任务名；执行顺序仍按
+清单排列，拼错或重复指定会在创建输出目录前报错。例如：
+
+```bash
+.venv/bin/coding-agent-benchmark benchmark_tasks_portfolio.json \
+  --task fix-order-discount --output-dir /tmp/coding-agent-portfolio-probe-001
+```
+
+`summary.json` 的 `benchmark_run` 记录原清单 SHA-256、原清单题数及实际
+选跑的任务名和数量；选跑汇总只代表所选子集，不能当作八题全量成功率。
+每次仍需使用新的输出目录，且选跑会产生真实模型 API 请求。
+
 八题的可见测试文件都被评测器锁定：Agent 若修改、删除或用符号链接替换，
 即使 CLI 复验通过也按评测失败计。八题均另有 `holdout_files`，
 只在 Agent 运行和 CLI 独立复验结束后加入临时工作区，再运行一次固定

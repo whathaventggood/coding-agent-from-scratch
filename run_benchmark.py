@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import argparse
+import hashlib
 from command_tool import build_verification_command
 from evaluate_reports import (
     print_evaluation_summary,
@@ -198,6 +199,26 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
         })
 
     return normalized_tasks
+
+
+def select_benchmark_tasks(
+        tasks: list[dict], requested_names: list[str] | None,
+) -> list[dict]:
+    if not requested_names:
+        return tasks
+
+    available_names = {task["name"] for task in tasks}
+    unknown = set(requested_names) - available_names
+    if unknown:
+        raise ValueError(
+            "未知任务：" + ", ".join(sorted(unknown))
+            + "；可选任务：" + ", ".join(task["name"] for task in tasks)
+        )
+    if len(requested_names) != len(set(requested_names)):
+        raise ValueError("--task 不可重复指定同一任务")
+
+    selected = set(requested_names)
+    return [task for task in tasks if task["name"] in selected]
 
 
 def resolve_task_file(
@@ -501,6 +522,7 @@ def run_benchmark_task(
 def run_benchmark_suite(
         tasks: list[dict],
         output_directory: Path,
+        benchmark_run: dict | None = None,
 ) -> tuple[list[Path], list[str]]:
     if (
             output_directory.exists()
@@ -543,6 +565,8 @@ def run_benchmark_suite(
         raise RuntimeError("评测没有生成任何 JSON 报告")
 
     summary = summarize_reports(report_paths)
+    if benchmark_run is not None:
+        summary["benchmark_run"] = benchmark_run
     print()
     print_evaluation_summary(summary)
 
@@ -577,6 +601,12 @@ def main() -> None:
         type=Path,
         help="保存逐次报告和汇总的新目录",
     )
+    parser.add_argument(
+        "--task",
+        action="append",
+        metavar="NAME",
+        help="只运行指定任务，可重复提供；默认运行全部任务",
+    )
     args = parser.parse_args()
 
     manifest_path = args.manifest.expanduser().resolve()
@@ -585,10 +615,20 @@ def main() -> None:
     )
 
     try:
-        tasks = load_benchmark_tasks(manifest_path)
+        all_tasks = load_benchmark_tasks(manifest_path)
+        tasks = select_benchmark_tasks(all_tasks, args.task)
+        manifest_sha256 = hashlib.sha256(
+            manifest_path.read_bytes()
+        ).hexdigest()
         _, failed_task_names = run_benchmark_suite(
             tasks,
             output_directory,
+            benchmark_run={
+                "manifest_sha256": manifest_sha256,
+                "manifest_task_count": len(all_tasks),
+                "selected_task_names": [task["name"] for task in tasks],
+                "selected_task_count": len(tasks),
+            },
         )
     except (
             ValueError,
