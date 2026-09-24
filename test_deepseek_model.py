@@ -268,6 +268,12 @@ def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
             )
             assert "create_file" in first_message["content"]
             assert "不要重复执行" in first_message["content"]
+            assert "最多有 3 次模型请求" in first_message["content"]
+            assert "预留一次请求" in first_message["content"]
+            assert "读相关测试确认所需接口后" in first_message["content"]
+            assert "测试通过后直接给出最终答复" in (
+                first_message["content"]
+            )
             names = {tool["function"]["name"] for tool in kwargs["tools"]}
             assert names == {
                 "list_files",
@@ -302,6 +308,7 @@ def test_edit_tool_with_local_permission(tmp_path, monkeypatch):
 
     answer = deepseek_model.read_file_and_answer(
         "修改 note.txt",
+        max_steps=3,
         workspace_root=str(workspace),
         allow_edit=True,
     )

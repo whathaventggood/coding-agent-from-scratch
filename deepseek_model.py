@@ -373,11 +373,17 @@ def request_file_read(prompt: str):
 def build_workspace_agent_prompt(
         prompt: str,
         allow_edit: bool,
+        max_steps: int,
 ) -> str:
     instructions = [
         (
             "你正在受信工作区中完成编码任务，"
             "请根据实际文件和测试结果行动。"
+        ),
+        (
+            f"本次最多有 {max_steps} 次模型请求。"
+            "请为读取最后一次工具结果并给出最终答复预留一次请求；"
+            "接近上限时不要重复无新证据的探索。"
         ),
         (
             "没有获得新证据时，不要重复执行"
@@ -389,11 +395,13 @@ def build_workspace_agent_prompt(
         instructions.extend([
             (
                 "当前任务允许编辑。若测试或导入明确依赖"
-                "一个不存在的源文件，应使用 create_file 创建它，"
-                "不要反复读取已确认不存在的路径。"
+                "一个不存在的源文件，读相关测试确认所需接口后，"
+                "应尽快使用 create_file 创建它；"
+                "不要反复列目录、搜索或读取已确认不存在的路径。"
             ),
             (
                 "修改后必须运行测试验证；"
+                "测试通过后直接给出最终答复，"
                 "测试未通过时不要声称任务完成。"
             ),
         ])
@@ -433,6 +441,7 @@ def read_file_and_answer(
         agent_prompt = build_workspace_agent_prompt(
             prompt,
             allow_edit,
+            max_steps,
         )
     client = create_deepseek_client()
     available_tools = [READ_FILE_TOOL]
