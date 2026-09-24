@@ -198,7 +198,8 @@ SEARCH_WORKSPACE_TOOL = {
         "name": "search_workspace",
         "description": (
             "递归搜索工作区指定目录中的UTF-8文本文件，"
-            "返回相对路径、行号和匹配行，最多返回100条"
+            "分页返回相对路径、行号和匹配行；"
+            "结果提示 offset 时按原 path 和 keyword 读取下一页"
         ),
         "parameters": {
             "type": "object",
@@ -210,6 +211,11 @@ SEARCH_WORKSPACE_TOOL = {
                 "keyword": {
                     "type": "string",
                     "description": "区分大小写的搜索关键词",
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "可选；填上一页提示的 offset 继续搜索",
                 },
             },
             "required": ["path", "keyword"],

@@ -173,9 +173,15 @@ IGNORED_SEARCH_DIRECTORIES = {
 }
 
 MAX_WORKSPACE_SEARCH_RESULTS = 100
+MAX_WORKSPACE_SEARCH_CHARS = 3000
+MAX_SEARCH_MATCH_LINE_CHARS = 300
 
 
-def search_workspace(path: str, keyword: str) -> ToolResult:
+def search_workspace(
+        path: str,
+        keyword: str,
+        offset: int = 0,
+) -> ToolResult:
     if not path:
         return ToolResult(
             content="路径不能为空",
@@ -188,6 +194,12 @@ def search_workspace(path: str, keyword: str) -> ToolResult:
             is_error=True,
         )
 
+    if type(offset) is not int or offset < 0:
+        return ToolResult(
+            content="offset必须是非负整数",
+            is_error=True,
+        )
+
     root = Path(path)
 
     if not root.is_dir():
@@ -197,6 +209,8 @@ def search_workspace(path: str, keyword: str) -> ToolResult:
         )
 
     matches = []
+    page_chars = 0
+    seen_matches = 0
 
     # 递归遍历 root 目录树，每轮获取当前目录、子目录列表和文件列表
     for current_root, directory_names, file_names in os.walk(
@@ -235,17 +249,40 @@ def search_workspace(path: str, keyword: str) -> ToolResult:
                 if keyword not in line:
                     continue
 
-                matches.append(
-                    f"{relative_path}:{line_number}: {line}"
-                )
+                if seen_matches < offset:
+                    seen_matches += 1
+                    continue
 
-                if len(matches) >= MAX_WORKSPACE_SEARCH_RESULTS:
+                if len(line) > MAX_SEARCH_MATCH_LINE_CHARS:
+                    match_index = line.find(keyword)
+                    excerpt_start = max(0, match_index - 80)
+                    excerpt_end = (
+                        excerpt_start + MAX_SEARCH_MATCH_LINE_CHARS
+                    )
+                    line = (
+                        ("…" if excerpt_start else "")
+                        + line[excerpt_start:excerpt_end]
+                        + ("…" if excerpt_end < len(line) else "")
+                    )
+
+                entry = f"{relative_path}:{line_number}: {line}"
+
+                if matches and (
+                        len(matches) >= MAX_WORKSPACE_SEARCH_RESULTS
+                        or page_chars + len(entry) + 1
+                        > MAX_WORKSPACE_SEARCH_CHARS
+                ):
                     matches.append(
-                        "[搜索结果已达 100 条上限]"
+                        "[还有更多搜索结果：保持 path 和 keyword 不变，"
+                        f"下次传 offset={offset + len(matches)}]"
                     )
                     return ToolResult(
                         content="\n".join(matches),
                     )
+
+                matches.append(entry)
+                page_chars += len(entry) + 1
+                seen_matches += 1
 
     return ToolResult(
         content="\n".join(matches),

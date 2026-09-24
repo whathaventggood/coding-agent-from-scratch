@@ -45,6 +45,7 @@ def dispatch(
         start_line: int | None = None,
         max_lines: int | None = None,
         start_after: str | None = None,
+        offset: int = 0,
         content: str | None = None,
         destination: str | None = None,
         verification_profile: str = "pytest",
@@ -153,7 +154,7 @@ def dispatch(
                 is_error=True,
             )
 
-        return search_workspace(path, keyword)
+        return search_workspace(path, keyword, offset=offset)
 
     elif tool_name == "edit_file":
         if old_text is None:
@@ -296,6 +297,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
     start_line = None
     max_lines = None
     start_after = None
+    offset = 0
 
     if name == "list_files":
         start_after = arguments.get("start_after")
@@ -305,6 +307,12 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
                 return {"error": "start_after必须是字符串"}
             if not start_after:
                 return {"error": "start_after不能为空"}
+
+    if name == "search_workspace":
+        offset = arguments.get("offset", 0)
+
+        if type(offset) is not int or offset < 0:
+            return {"error": "offset必须是非负整数"}
 
     if name == "read_file":
         start_line = arguments.get("start_line")
@@ -371,6 +379,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
         start_line=start_line,
         max_lines=max_lines,
         start_after=start_after,
+        offset=offset,
         content=content,
         destination=destination,
     )
@@ -400,6 +409,7 @@ def handle_request(
         start_line=result.start_line,
         max_lines=result.max_lines,
         start_after=result.start_after,
+        offset=result.offset,
         content=result.content,
         destination=result.destination,
         verification_profile=verification_profile,

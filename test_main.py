@@ -984,6 +984,63 @@ def test_handle_request_search_workspace(tmp_path):
     )
 
 
+def test_search_workspace_pages_and_rejects_invalid_offset(
+        tmp_path,
+        monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "a.py").write_text(
+        "MATCH first\nMATCH second\nMATCH third\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(file_tools, "MAX_WORKSPACE_SEARCH_RESULTS", 2)
+
+    def request(offset):
+        return handle_request(
+            json.dumps({
+                "name": "search_workspace",
+                "arguments": {
+                    "path": ".",
+                    "keyword": "MATCH",
+                    "offset": offset,
+                },
+            }),
+            workspace_root=str(workspace),
+        )
+
+    assert request(0) == ToolResult(
+        content=(
+            "a.py:1: MATCH first\n"
+            "a.py:2: MATCH second\n"
+            "[还有更多搜索结果：保持 path 和 keyword 不变，"
+            "下次传 offset=2]"
+        )
+    )
+    assert request(2) == ToolResult(
+        content="a.py:3: MATCH third"
+    )
+    assert request(-1) == ToolResult(
+        content="offset必须是非负整数",
+        is_error=True,
+    )
+
+
+def test_search_workspace_clips_long_match_line(tmp_path):
+    (tmp_path / "a.py").write_text(
+        ("x" * 5000 + "NEEDLE" + "y" * 5000 + "\n") * 20,
+        encoding="utf-8",
+    )
+
+    result = file_tools.search_workspace(str(tmp_path), "NEEDLE")
+
+    assert result.is_error is False
+    assert "a.py:1:" in result.content
+    assert "NEEDLE" in result.content
+    assert len(result.content) < 4000
+    assert "offset=" in result.content
+
+
 def test_handle_request_inspects_git_changes(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
