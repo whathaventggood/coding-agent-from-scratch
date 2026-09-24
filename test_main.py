@@ -5,6 +5,7 @@ from file_tools import (
 )
 import subprocess
 import json
+import file_tools
 from command_tool import run_tests
 
 
@@ -224,6 +225,75 @@ def test_handle_request_list_files_success(tmp_path):
         content=expected_content,
         is_error=False,
     )
+
+
+def test_list_files_pages_through_workspace_request(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    for name in ("a.txt", "b.txt", "c.txt"):
+        (workspace / name).write_text(name, encoding="utf-8")
+
+    monkeypatch.setattr(file_tools, "MAX_LIST_PAGE_ENTRIES", 2)
+
+    first = handle_request(
+        json.dumps({
+            "name": "list_files",
+            "arguments": {"path": "."},
+        }),
+        workspace_root=str(workspace),
+    )
+    assert first == ToolResult(
+        content=(
+            f"[文件] {workspace / 'a.txt'}\n"
+            f"[文件] {workspace / 'b.txt'}\n"
+            '[还有更多条目：再次调用 list_files，path 不变，'
+            'start_after="b.txt"]'
+        )
+    )
+
+    second = handle_request(
+        json.dumps({
+            "name": "list_files",
+            "arguments": {
+                "path": ".",
+                "start_after": "b.txt",
+            },
+        }),
+        workspace_root=str(workspace),
+    )
+    assert second == ToolResult(
+        content=f"[文件] {workspace / 'c.txt'}"
+    )
+
+    invalid = handle_request(
+        json.dumps({
+            "name": "list_files",
+            "arguments": {
+                "path": ".",
+                "start_after": 3,
+            },
+        }),
+        workspace_root=str(workspace),
+    )
+    assert invalid == ToolResult(
+        content="start_after必须是字符串",
+        is_error=True,
+    )
+
+
+def test_list_files_page_fits_agent_result_budget(tmp_path):
+    for index in range(80):
+        (tmp_path / f"file-{index:03}.txt").write_text(
+            "x",
+            encoding="utf-8",
+        )
+
+    result = list_files(str(tmp_path))
+
+    assert result.is_error is False
+    assert len(result.content) < 4000
+    assert "start_after=" in result.content
 
 
 def test_search_file_success(tmp_path):

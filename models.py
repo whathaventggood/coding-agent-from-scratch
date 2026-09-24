@@ -16,6 +16,7 @@ class ToolRequest:
     new_text: str | None = None
     start_line: int | None = None
     max_lines: int | None = None
+    start_after: str | None = None
     content: str | None = None
     destination: str | None = None
 

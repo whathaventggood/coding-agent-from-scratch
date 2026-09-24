@@ -1,6 +1,11 @@
 from pathlib import Path
 from models import ToolResult
 import os
+import json
+
+
+MAX_LIST_PAGE_ENTRIES = 50
+MAX_LIST_PAGE_CHARS = 3000
 
 
 # 读工具
@@ -69,12 +74,21 @@ def read_file(
 
 
 # 列出目录下文件名
-def list_files(path: str) -> ToolResult:
+def list_files(
+        path: str,
+        start_after: str | None = None,
+) -> ToolResult:
     if not path:
         return ToolResult(
             content="路径不能为空",
             is_error=True,
         )
+
+    if start_after is not None:
+        if not isinstance(start_after, str):
+            return ToolResult("start_after必须是字符串", is_error=True)
+        if not start_after:
+            return ToolResult("start_after不能为空", is_error=True)
 
     folder = Path(path)
 
@@ -84,17 +98,50 @@ def list_files(path: str) -> ToolResult:
             is_error=True,
         )
 
+    try:
+        items = sorted(
+            folder.iterdir(),
+            key=lambda item: item.name,
+        )
+    except OSError as error:
+        return ToolResult(
+            content=f"无法列出目录：{error}",
+            is_error=True,
+        )
+
     entries = []
-    items = sorted(
-        folder.iterdir(),
-        key=lambda item: item.name,
-    )
+    page_chars = 0
+    last_name = None
+    has_more = False
 
     for item in items:
+        if start_after is not None and item.name <= start_after:
+            continue
+
         if item.is_dir():
-            entries.append(f"[目录] {item}/")
+            line = f"[目录] {item}/"
         elif item.is_file():
-            entries.append(f"[文件] {item}")
+            line = f"[文件] {item}"
+        else:
+            continue
+
+        if entries and (
+                len(entries) >= MAX_LIST_PAGE_ENTRIES
+                or page_chars + len(line) + 1 > MAX_LIST_PAGE_CHARS
+        ):
+            has_more = True
+            break
+
+        entries.append(line)
+        page_chars += len(line) + 1
+        last_name = item.name
+
+    if has_more:
+        cursor = json.dumps(last_name, ensure_ascii=False)
+        entries.append(
+            "[还有更多条目：再次调用 list_files，"
+            f"path 不变，start_after={cursor}]"
+        )
 
     return ToolResult(
         content="\n".join(entries),

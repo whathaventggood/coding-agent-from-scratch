@@ -44,6 +44,7 @@ def dispatch(
         workspace_root: str | None = None,
         start_line: int | None = None,
         max_lines: int | None = None,
+        start_after: str | None = None,
         content: str | None = None,
         destination: str | None = None,
         verification_profile: str = "pytest",
@@ -135,7 +136,7 @@ def dispatch(
         )
 
     elif tool_name == "list_files":
-        return list_files(path)
+        return list_files(path, start_after=start_after)
 
     elif tool_name == "search_file":
         if keyword is None:
@@ -294,6 +295,16 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
 
     start_line = None
     max_lines = None
+    start_after = None
+
+    if name == "list_files":
+        start_after = arguments.get("start_after")
+
+        if start_after is not None:
+            if not isinstance(start_after, str):
+                return {"error": "start_after必须是字符串"}
+            if not start_after:
+                return {"error": "start_after不能为空"}
 
     if name == "read_file":
         start_line = arguments.get("start_line")
@@ -359,6 +370,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
         new_text=new_text,
         start_line=start_line,
         max_lines=max_lines,
+        start_after=start_after,
         content=content,
         destination=destination,
     )
@@ -387,6 +399,7 @@ def handle_request(
         workspace_root=workspace_root,
         start_line=result.start_line,
         max_lines=result.max_lines,
+        start_after=result.start_after,
         content=result.content,
         destination=result.destination,
         verification_profile=verification_profile,

@@ -105,11 +105,15 @@ LIST_FILES_TOOL = {
     "type": "function",
     "function": {
         "name": "list_files",
-        "description": "列出工作区指定目录下一层的文件和子目录，并标明类型",
+        "description": "分页列出工作区指定目录下一层的文件和子目录，并标明类型；结果提示 start_after 时用它读取下一页",
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {"type": "string"},
+                "start_after": {
+                    "type": "string",
+                    "description": "可选；填上一页提示的游标，继续读取后续条目",
+                },
             },
             "required": ["path"],
             "additionalProperties": False,
