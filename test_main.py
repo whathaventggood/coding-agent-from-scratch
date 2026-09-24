@@ -1041,6 +1041,102 @@ def test_search_workspace_clips_long_match_line(tmp_path):
     assert "offset=" in result.content
 
 
+def test_python_symbols_find_names_and_page_in_workspace(
+        tmp_path,
+        monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "a.py").write_text(
+        "class Worker:\n"
+        "    def run(self):\n        pass\n"
+        "    async def poll(self):\n        pass\n\n"
+        "def helper():\n    pass\n",
+        encoding="utf-8",
+    )
+    (workspace / "src").mkdir()
+    (workspace / "src/b.py").write_text(
+        "async def run_agent():\n    pass\n",
+        encoding="utf-8",
+    )
+    (workspace / ".venv").mkdir()
+    (workspace / ".venv/hidden.py").write_text(
+        "def hidden():\n    pass\n",
+        encoding="utf-8",
+    )
+    (workspace / "build/lib").mkdir(parents=True)
+    (workspace / "build/lib/duplicate.py").write_text(
+        "def duplicate():\n    pass\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "outside.py").write_text(
+        "def external():\n    pass\n",
+        encoding="utf-8",
+    )
+    (workspace / "external.py").symlink_to(tmp_path / "outside.py")
+    (workspace / "broken.py").write_text(
+        "def invalid(:\n",
+        encoding="utf-8",
+    )
+    (workspace / "binary.py").write_bytes(b"\xff")
+    monkeypatch.setattr(file_tools, "MAX_PYTHON_SYMBOL_RESULTS", 2)
+
+    def request(offset=0, keyword=None, path="."):
+        arguments = {"path": path, "offset": offset}
+        if keyword is not None:
+            arguments["keyword"] = keyword
+        return handle_request(
+            json.dumps({
+                "name": "list_python_symbols",
+                "arguments": arguments,
+            }),
+            workspace_root=str(workspace),
+        )
+
+    assert request() == ToolResult(
+        "a.py:1: class Worker\n"
+        "a.py:2: method Worker.run\n"
+        "[还有更多符号：保持 path 和 keyword 不变，下次传 offset=2]"
+    )
+    assert request(offset=2) == ToolResult(
+        "a.py:4: method Worker.poll\n"
+        "a.py:7: function helper\n"
+        "[还有更多符号：保持 path 和 keyword 不变，下次传 offset=4]"
+    )
+    assert request(offset=4) == ToolResult(
+        "src/b.py:1: function run_agent"
+    )
+    assert request(keyword="WORKER", offset=2) == ToolResult(
+        "a.py:4: method Worker.poll"
+    )
+    assert request(path="../") == ToolResult(
+        "路径超出工作区", is_error=True
+    )
+    assert request(offset=True) == ToolResult(
+        "offset必须是非负整数", is_error=True
+    )
+    assert request(keyword="") == ToolResult(
+        "keyword必须是非空字符串", is_error=True
+    )
+
+
+def test_python_symbols_rejects_invalid_filter_and_bounds_output(tmp_path):
+    source = tmp_path / "many.py"
+    source.write_text(
+        "\n".join(f"def function_{index}(): pass" for index in range(200)),
+        encoding="utf-8",
+    )
+    result = file_tools.list_python_symbols(str(tmp_path))
+    assert result.is_error is False
+    assert len(result.content) < 4000
+    assert "offset=" in result.content
+    assert file_tools.list_python_symbols(
+        str(tmp_path), keyword=""
+    ) == ToolResult(
+        "keyword必须是非空字符串", is_error=True
+    )
+
+
 def test_handle_request_inspects_git_changes(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()

@@ -224,6 +224,37 @@ SEARCH_WORKSPACE_TOOL = {
     },
 }
 
+LIST_PYTHON_SYMBOLS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "list_python_symbols",
+        "description": (
+            "只读列出工作区目录树中的 Python 顶层函数、类和直接类方法，"
+            "返回相对路径与定义行号；可按符号名过滤并用 offset 续页"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "工作区内要检索的目录",
+                },
+                "keyword": {
+                    "type": "string",
+                    "description": "可选；按符号名称不区分大小写过滤",
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "可选；填上一页提示的 offset 继续",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 INSPECT_GIT_CHANGES_TOOL = {
     "type": "function",
     "function": {
@@ -462,6 +493,7 @@ def read_file_and_answer(
             LIST_FILES_TOOL,
             SEARCH_FILE_TOOL,
             SEARCH_WORKSPACE_TOOL,
+            LIST_PYTHON_SYMBOLS_TOOL,
             RUN_TESTS_TOOL,
             INSPECT_GIT_CHANGES_TOOL,
         ])
@@ -470,6 +502,7 @@ def read_file_and_answer(
             "search_file",
             "run_tests",
             "search_workspace",
+            "list_python_symbols",
             "inspect_git_changes",
         })
 

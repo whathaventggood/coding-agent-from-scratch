@@ -14,6 +14,7 @@ from file_tools import (
     create_file,
     create_directory,
     search_workspace,
+    list_python_symbols,
     rename_file,
     delete_file,
 )
@@ -58,6 +59,7 @@ def dispatch(
         "create_file",
         "create_directory",
         "search_workspace",
+        "list_python_symbols",
         "rename_file",
         "delete_file",
     }
@@ -155,6 +157,9 @@ def dispatch(
             )
 
         return search_workspace(path, keyword, offset=offset)
+
+    elif tool_name == "list_python_symbols":
+        return list_python_symbols(path, keyword=keyword, offset=offset)
 
     elif tool_name == "edit_file":
         if old_text is None:
@@ -308,7 +313,7 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
             if not start_after:
                 return {"error": "start_after不能为空"}
 
-    if name == "search_workspace":
+    if name in {"search_workspace", "list_python_symbols"}:
         offset = arguments.get("offset", 0)
 
         if type(offset) is not int or offset < 0:
@@ -347,6 +352,13 @@ def parse_request(raw: str) -> dict[str, str] | ToolRequest:
 
         if keyword == "":
             return {"error": "keyword不能为空"}
+
+    if name == "list_python_symbols":
+        keyword = arguments.get("keyword")
+        if keyword is not None and (
+                not isinstance(keyword, str) or not keyword
+        ):
+            return {"error": "keyword必须是非空字符串"}
 
     old_text = None
     new_text = None

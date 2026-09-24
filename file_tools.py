@@ -2,6 +2,7 @@ from pathlib import Path
 from models import ToolResult
 import os
 import json
+import ast
 
 
 MAX_LIST_PAGE_ENTRIES = 50
@@ -175,6 +176,12 @@ IGNORED_SEARCH_DIRECTORIES = {
 MAX_WORKSPACE_SEARCH_RESULTS = 100
 MAX_WORKSPACE_SEARCH_CHARS = 3000
 MAX_SEARCH_MATCH_LINE_CHARS = 300
+MAX_PYTHON_SYMBOL_RESULTS = 80
+MAX_PYTHON_SYMBOL_CHARS = 3000
+MAX_PYTHON_SOURCE_BYTES = 1_000_000
+IGNORED_SYMBOL_DIRECTORIES = IGNORED_SEARCH_DIRECTORIES | {
+    "build", "dist", "node_modules", ".tox",
+}
 
 
 def search_workspace(
@@ -287,6 +294,105 @@ def search_workspace(
     return ToolResult(
         content="\n".join(matches),
     )
+
+
+def list_python_symbols(
+        path: str,
+        keyword: str | None = None,
+        offset: int = 0,
+) -> ToolResult:
+    if not path:
+        return ToolResult("路径不能为空", is_error=True)
+    if keyword is not None and (
+            not isinstance(keyword, str) or not keyword
+    ):
+        return ToolResult("keyword必须是非空字符串", is_error=True)
+    if type(offset) is not int or offset < 0:
+        return ToolResult("offset必须是非负整数", is_error=True)
+
+    root = Path(path)
+    if not root.is_dir():
+        return ToolResult("不是目录", is_error=True)
+
+    matches = []
+    page_chars = 0
+    seen_matches = 0
+
+    for current_root, directory_names, file_names in os.walk(
+            root,
+            followlinks=False,
+    ):
+        current_directory = Path(current_root)
+        directory_names[:] = sorted(
+            name
+            for name in directory_names
+            if (
+                    name not in IGNORED_SYMBOL_DIRECTORIES
+                    and not name.endswith(".egg-info")
+                    and not (current_directory / name).is_symlink()
+            )
+        )
+
+        for file_name in sorted(file_names):
+            source_path = current_directory / file_name
+            if source_path.suffix != ".py" or source_path.is_symlink():
+                continue
+
+            try:
+                if source_path.stat().st_size > MAX_PYTHON_SOURCE_BYTES:
+                    continue
+                source = source_path.read_text(encoding="utf-8")
+                tree = ast.parse(source, filename=str(source_path))
+            except (OSError, UnicodeDecodeError, SyntaxError,
+                    ValueError, RecursionError):
+                continue
+
+            relative_path = source_path.relative_to(root)
+            symbols = []
+            for node in tree.body:
+                if isinstance(node, ast.ClassDef):
+                    symbols.append((node.lineno, "class", node.name))
+                    for member in node.body:
+                        if isinstance(
+                                member,
+                                (ast.FunctionDef, ast.AsyncFunctionDef),
+                        ):
+                            symbols.append((
+                                member.lineno,
+                                "method",
+                                f"{node.name}.{member.name}",
+                            ))
+                elif isinstance(
+                        node,
+                        (ast.FunctionDef, ast.AsyncFunctionDef),
+                ):
+                    symbols.append((node.lineno, "function", node.name))
+
+            for line_number, kind, name in symbols:
+                if keyword is not None and keyword.lower() not in name.lower():
+                    continue
+                if seen_matches < offset:
+                    seen_matches += 1
+                    continue
+
+                display_name = name[:160] + ("…" if len(name) > 160 else "")
+                entry = f"{relative_path}:{line_number}: {kind} {display_name}"
+                if matches and (
+                        len(matches) >= MAX_PYTHON_SYMBOL_RESULTS
+                        or page_chars + len(entry) + 1
+                        > MAX_PYTHON_SYMBOL_CHARS
+                ):
+                    matches.append(
+                        "[还有更多符号：保持 path 和 keyword 不变，"
+                        f"下次传 offset={offset + len(matches)}]"
+                    )
+                    return ToolResult("\n".join(matches))
+
+                matches.append(entry)
+                page_chars += len(entry) + 1
+                seen_matches += 1
+
+    return ToolResult("\n".join(matches))
 
 
 def replace_text_once(
