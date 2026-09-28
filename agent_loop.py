@@ -41,7 +41,7 @@ def estimate_messages_chars(messages: list) -> int:
         messages,
         ensure_ascii=False,
         separators=(",", ":"),
-        default=json_fallback,
+        default=json_fallback,        #遇到json不认识的对象就交给json_fallback处理
     )
     return len(serialized)
 
@@ -451,6 +451,7 @@ def run_agent(
                 )
             name = response["name"]
 
+            #模型输出不可信，纵深防御
             if allowed_tool_names is not None and name not in allowed_tool_names:
                 result = ToolResult(
                     content="模型请求了未开放的工具",

@@ -18,11 +18,11 @@ MISSING_FILE = "<missing>"
 
 @dataclass
 class WorkspaceSnapshot:
-    is_git_repository: bool
-    files: dict[str, str]
-    file_contents: dict[str, bytes]
-    file_modes: dict[str, int]
-    message: str | None = None
+    is_git_repository: bool               #工作区是不是有效的 Git 仓库。
+    files: dict[str, str]                 #文件路径 → 文件指纹
+    file_contents: dict[str, bytes]       #文件路径 → 原始二进制内容
+    file_modes: dict[str, int]            #文件路径 → 权限模式
+    message: str | None = None            #快照失败或无法比较时的原因；正常时为 None
 
 
 @dataclass
@@ -616,6 +616,7 @@ def main():
     if args.max_steps < 1:
         parser.error("--max-steps 必须大于 0")
 
+    # 如果条件为 True，parser.error(...) 会打印错误信息和命令用法，然后立即终止程序，退出码通常是 2
     if args.rollback_on_failure and not args.allow_edit:
         parser.error(
             "--rollback-on-failure 必须与 --allow-edit 一起使用"
