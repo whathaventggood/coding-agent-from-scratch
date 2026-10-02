@@ -368,9 +368,16 @@ def create_deepseek_client() -> OpenAI:
     )
 
 
-def request_chat_completion(client: OpenAI, **request_options):
+def request_chat_completion(client: OpenAI, on_text=None, **request_options):
     try:
-        return client.chat.completions.create(**request_options)
+        if on_text is None:
+            return client.chat.completions.create(**request_options)
+
+        with client.chat.completions.stream(**request_options) as stream:
+            for event in stream:
+                if event.type == "content.delta" and event.delta:
+                    on_text(event.delta)
+            return stream.get_final_completion()
     except AuthenticationError as error:
         raise RuntimeError(
             "DeepSeek 鉴权失败，请检查 DEEPSEEK_API_KEY"
@@ -504,6 +511,8 @@ def read_file_and_answer(
         tool_trace: list[ToolTraceEntry] | None = None,
         context_usage: ContextUsageStats | None = None,
         verification_profile: str = "pytest",
+        on_text=None,
+        on_progress=None,
 ) -> str:
     if allow_edit and workspace_root is None:
         raise ValueError("编辑工具需要受信工作区")
@@ -568,8 +577,8 @@ def read_file_and_answer(
             tools=available_tools,
             tool_choice="auto",
             max_tokens=300,
-            stream=False,
             extra_body={"thinking": {"type": "disabled"}},
+            on_text=on_text
         )
 
         choice = response.choices[0]
@@ -606,6 +615,7 @@ def read_file_and_answer(
         tool_trace=tool_trace,
         context_usage=context_usage,
         verification_profile=verification_profile,
+        on_progress=on_progress,
     )
 
 

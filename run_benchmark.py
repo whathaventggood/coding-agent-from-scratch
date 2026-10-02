@@ -59,7 +59,7 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
                 f"第 {index} 个任务必须是 JSON 对象"
             )
 
-        unsupported_fields = task.keys() - ALLOWED_TASK_FIELDS       #保留所有「在 task.keys() 中，但不在 ALLOWED_TASK_FIELDS 中」的元素。
+        unsupported_fields = task.keys() - ALLOWED_TASK_FIELDS  # 保留所有「在 task.keys() 中，但不在 ALLOWED_TASK_FIELDS 中」的元素。
 
         if unsupported_fields:
             names = ", ".join(sorted(unsupported_fields))
@@ -147,10 +147,10 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
         if (
                 not isinstance(protected_files, list)
                 or any(
-                    not isinstance(item, str)
-                    or item not in normalized_files
-                    for item in protected_files
-                )
+            not isinstance(item, str)
+            or item not in normalized_files
+            for item in protected_files
+        )
                 or len(set(protected_files)) != len(protected_files)
         ):
             raise ValueError(
@@ -175,9 +175,9 @@ def load_benchmark_tasks(path: Path) -> list[dict]:
                     or not path.name.startswith("test_")
                     or path.suffix != ".py"
                     or path in {
-                        Path(visible_path)
-                        for visible_path in normalized_files
-                    }
+                Path(visible_path)
+                for visible_path in normalized_files
+            }
             ):
                 raise ValueError(
                     f"任务 {name} 的 holdout_files "
@@ -249,14 +249,14 @@ def prepare_task_workspace(
 ) -> None:
     workspace.mkdir()
 
-    for relative_path, content in task["files"].items():   #枚举字典中的键值对
+    for relative_path, content in task["files"].items():  # 枚举字典中的键值对
         target = resolve_task_file(
             workspace,
             relative_path,
         )
         target.parent.mkdir(
-            parents=True,      #parents=True 会递归创建它缺失的所有上级目录。
-            exist_ok=True,     #如果准备创建的目标目录本身已经存在，不要报错。
+            parents=True,  # parents=True 会递归创建它缺失的所有上级目录。
+            exist_ok=True,  # 如果准备创建的目标目录本身已经存在，不要报错。
         )
         target.write_text(
             content,
@@ -266,7 +266,7 @@ def prepare_task_workspace(
     subprocess.run(
         ["git", "init", "-q"],
         cwd=workspace,
-        check=True,        #如果这条 Git 命令执行失败，就立即抛出 subprocess.CalledProcessError
+        check=True,  # 如果这条 Git 命令执行失败，就立即抛出 subprocess.CalledProcessError
         capture_output=True,
         text=True,
     )
@@ -302,7 +302,7 @@ def build_cli_command(
         workspace: Path,
         report_path: Path,
 ) -> list[str]:
-    cli_path = Path(__file__).with_name("cli.py").resolve()    #根据当前文件的位置，得到同目录下 cli.py 的绝对路径。
+    cli_path = Path(__file__).with_name("cli.py").resolve()  # 根据当前文件的位置，得到同目录下 cli.py 的绝对路径。
 
     command = [
         sys.executable,
@@ -360,12 +360,12 @@ def verify_benchmark_guard(
         try:
             target = resolve_task_file(workspace, relative_path)
             unchanged = (
-                not has_symlink_component(
-                    workspace, relative_path
-                )
-                and target.is_file()
-                and target.read_bytes()
-                == task["files"][relative_path].encode("utf-8")
+                    not has_symlink_component(
+                        workspace, relative_path
+                    )
+                    and target.is_file()
+                    and target.read_bytes()
+                    == task["files"][relative_path].encode("utf-8")
             )
         except (OSError, ValueError):
             unchanged = False
@@ -378,7 +378,7 @@ def verify_benchmark_guard(
     if changed_files:
         result["status"] = "failed"
         result["holdout_output"] = (
-            "受保护文件发生变化：" + ", ".join(changed_files)
+                "受保护文件发生变化：" + ", ".join(changed_files)
         )
         return result
 
@@ -466,11 +466,8 @@ def run_benchmark_task(
             report_path,
         )
 
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-        )
+        print(f"\n=== 任务 {task['name']} ===", flush=True)
+        result = subprocess.run(command)
 
         guard = verify_benchmark_guard(
             task,
@@ -486,23 +483,15 @@ def run_benchmark_task(
             report["benchmark_status"] = (
                 "success"
                 if result.returncode == 0
-                and guard["status"] == "passed"
+                   and guard["status"] == "passed"
                 else "failure"
             )
-            #更新文件内容
+            # 更新文件内容
             report_path.write_text(
                 json.dumps(report, ensure_ascii=False, indent=2)
                 + "\n",
                 encoding="utf-8",
             )
-
-        print(f"\n=== 任务 {task['name']} ===")
-
-        if result.stdout:
-            print(result.stdout, end="")
-
-        if result.stderr:
-            print(result.stderr, end="")
 
         if guard is not None:
             print(
@@ -538,7 +527,7 @@ def run_benchmark_suite(
 
     output_directory.mkdir()
 
-    report_paths = []      #保存已经成功生成的每个 task 的 JSON 报告路径
+    report_paths = []  # 保存已经成功生成的每个 task 的 JSON 报告路径
     failed_task_names = []
 
     for task in tasks:

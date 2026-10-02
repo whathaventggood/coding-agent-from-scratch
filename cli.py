@@ -18,11 +18,11 @@ MISSING_FILE = "<missing>"
 
 @dataclass
 class WorkspaceSnapshot:
-    is_git_repository: bool               #工作区是不是有效的 Git 仓库。
-    files: dict[str, str]                 #文件路径 → 文件指纹
-    file_contents: dict[str, bytes]       #文件路径 → 原始二进制内容
-    file_modes: dict[str, int]            #文件路径 → 权限模式
-    message: str | None = None            #快照失败或无法比较时的原因；正常时为 None
+    is_git_repository: bool  # 工作区是不是有效的 Git 仓库。
+    files: dict[str, str]  # 文件路径 → 文件指纹
+    file_contents: dict[str, bytes]  # 文件路径 → 原始二进制内容
+    file_modes: dict[str, int]  # 文件路径 → 权限模式
+    message: str | None = None  # 快照失败或无法比较时的原因；正常时为 None
 
 
 @dataclass
@@ -151,7 +151,7 @@ def find_workspace_changes(
         "deleted": [],
     }
 
-    all_paths = sorted(before.files.keys() | after.files.keys())
+    all_paths = sorted(before.files.keys() | after.files.keys())  # 取先后快照中的所有存在路径并且去重
 
     for path in all_paths:
         before_exists = (
@@ -658,6 +658,8 @@ def main():
             tool_trace=tool_trace,
             context_usage=context_usage,
             verification_profile=args.verification_profile,
+            on_text=lambda part: print(part, end="", flush=True),
+            on_progress=lambda message: print(f"\n{message}", flush=True),
         )
     except RuntimeError as error:
         after = None
@@ -712,6 +714,8 @@ def main():
     rollback_result = None
 
     if args.allow_edit:
+        print("正在进行完整独立复验......")
+
         check = run_tests(
             ".",
             str(workspace),

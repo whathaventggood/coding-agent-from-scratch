@@ -41,7 +41,7 @@ def estimate_messages_chars(messages: list) -> int:
         messages,
         ensure_ascii=False,
         separators=(",", ":"),
-        default=json_fallback,        #遇到json不认识的对象就交给json_fallback处理
+        default=json_fallback,  # 遇到json不认识的对象就交给json_fallback处理
     )
     return len(serialized)
 
@@ -381,6 +381,7 @@ def run_agent(
         context_usage: ContextUsageStats | None = None,
         max_total_message_chars: int = MAX_TOTAL_MESSAGE_CHARS,
         verification_profile: str = "pytest",
+        on_progress=None
 ) -> str:
     messages = [
         {
@@ -415,6 +416,8 @@ def run_agent(
                 message_chars,
             )
 
+        if on_progress is not None:
+            on_progress(f"第 {model_step} 次模型请求…")
         response = model(messages)
 
         compressed_count, released_chars = (
@@ -451,7 +454,7 @@ def run_agent(
                 )
             name = response["name"]
 
-            #模型输出不可信，纵深防御
+            # 模型输出不可信，纵深防御
             if allowed_tool_names is not None and name not in allowed_tool_names:
                 result = ToolResult(
                     content="模型请求了未开放的工具",
@@ -464,6 +467,9 @@ def run_agent(
                     result,
                 )
                 raise RuntimeError(result.content)
+
+            if on_progress is not None:
+                on_progress(f"正在执行 {name}…")
 
             result = execute_tool_call(
                 response,
@@ -539,6 +545,9 @@ def run_agent(
                         is_error=True,
                     )
                 else:
+                    if on_progress is not None:
+                        on_progress(f"正在执行 {name}…")
+
                     result = execute_tool_call(
                         {
                             "name": name,
